@@ -5,6 +5,7 @@ from sqlalchemy import engine_from_config, pool
 
 from app.core.config import settings
 from app.db import Base
+from app.models.types import UtcDateTime
 
 import app.models  # noqa: F401
 
@@ -18,6 +19,12 @@ config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"
 target_metadata = Base.metadata
 
 
+def render_item(type_: str, obj: object, autogen_context: object) -> str | bool:
+    if type_ == "type" and isinstance(obj, UtcDateTime):
+        return "sa.DateTime(timezone=True)"
+    return False
+
+
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
     if url is None:
@@ -28,6 +35,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         render_as_batch=url.startswith("sqlite"),
+        render_item=render_item,
     )
 
     with context.begin_transaction():
@@ -46,6 +54,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             render_as_batch=connection.dialect.name == "sqlite",
+            render_item=render_item,
         )
 
         with context.begin_transaction():

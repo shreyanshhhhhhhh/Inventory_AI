@@ -1,9 +1,33 @@
-"""SQLAlchemy models.
+"""SQLAlchemy models shared by SQLite and PostgreSQL."""
 
-Domain tables are added in later steps. Importing this package registers
-models on ``Base.metadata`` once they exist.
-"""
-
+from app.models.entities import (
+    AuditLog,
+    Business,
+    Category,
+    Location,
+    Product,
+    ProductSupplier,
+    PurchaseOrder,
+    PurchaseOrderItem,
+    RefreshToken,
+    StockMovement,
+    Supplier,
+    User,
+)
 from app.db import Base
 
-__all__ = ["Base"]
+__all__ = [
+    "AuditLog",
+    "Base",
+    "Business",
+    "Category",
+    "Location",
+    "Product",
+    "ProductSupplier",
+    "PurchaseOrder",
+    "PurchaseOrderItem",
+    "RefreshToken",
+    "StockMovement",
+    "Supplier",
+    "User",
+]

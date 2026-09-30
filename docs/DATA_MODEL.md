@@ -145,7 +145,10 @@ Flat list. `products.category_id` is `ON DELETE SET NULL`.
 | description | TEXT NULL | |
 | category_id | CHAR(36) NULL | FK categories |
 | unit | VARCHAR(32) | Default `each`. No unit conversion in Phase 1 |
+| cost | NUMERIC(18, 4) NULL | Decimal product cost in the business currency. Null until set. Not a float |
+| price | NUMERIC(18, 4) NULL | Decimal selling price in the business currency. Null until set. Not a float |
 | reorder_point | NUMERIC(14, 4) NULL | Compared with on-hand summed across locations. Null means no alert |
+| safety_stock | NUMERIC(14, 4) NULL | Extra quantity kept above the reorder point. Null means none. Not used in place of `reorder_point` |
 | archived_at | datetime NULL | Soft delete. Ledger rows keep the FK |
 | created_at | datetime | |
 | updated_at | datetime | |
@@ -238,16 +241,16 @@ Index `(business_id, product_id, location_id)` for the on-hand sum. Index `trans
 | po_number | VARCHAR(32) | Unique per business. Service-assigned, for example `PO-0001` |
 | supplier_id | CHAR(36) | FK suppliers |
 | location_id | CHAR(36) | FK locations. Where stock will be received |
-| status | VARCHAR(32) | `draft`, `ordered`, `partially_received`, `received`, `cancelled` |
+| status | VARCHAR(32) | `draft`, `approved`, `sent`, `received`, `cancelled` |
 | currency_code | CHAR(3) | Snapshot of the business currency at creation |
 | notes | TEXT NULL | |
-| ordered_at | datetime NULL | |
+| ordered_at | datetime NULL | Set when the order is sent. Null while it is still `draft` or `approved` |
 | expected_on | DATE NULL | |
 | created_by_user_id | CHAR(36) | FK users |
 | created_at | datetime | |
 | updated_at | datetime | |
 
-Status transitions, in the service: `draft` to `ordered` or `cancelled`; `ordered` to `partially_received`, `received`, or `cancelled` (cancel only when received quantity is still zero); `partially_received` to `received`. Lines are editable only in `draft`.
+Status values are `draft`, `approved`, `sent`, `received`, and `cancelled`. The purchase-order service moves an order along `draft` → `approved` → `sent` → `received`, or to `cancelled`. There is no `ordered` or `partially_received` status. Lines are editable only in `draft`.
 
 ## purchase_order_items
 

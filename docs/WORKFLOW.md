@@ -24,7 +24,7 @@ CSV header: `sku`, `name`, `category`, `location`, `quantity`, `unit`, `reorder_
 | Home | On-hand units, inventory value where a preferred supplier cost exists, low-stock list (`on-hand <= reorder_point`), open purchase orders, recent movements. |
 | Catalog | Categories, products, archive, supplier links (cost, lead time, preferred flag). |
 | Inventory | On-hand by location, post a sale, adjustment, or transfer, movement history. |
-| Orders & Suppliers | Suppliers and purchase orders: draft, order, partial receive, receive, cancel. |
+| Orders & Suppliers | Suppliers and purchase orders: draft, approved, sent, received, or cancelled. |
 | Agent Inbox | Placeholder. Empty state says it is not in this version. No API calls to a model. |
 | Insights | Placeholder. Same empty state. Forecasting is Phase 2. |
 | Accounts (lite) | Profile, password change, and the team list. This is not a general ledger. |
@@ -47,7 +47,7 @@ The owner adds a staff member from Accounts with name, email, and a temporary pa
 - **Sale.** Post one movement per SKU at a location, quantity negative. Lines from one checkout share a `sale_group_id`. The service rejects a sale that would push on-hand below zero.
 - **Adjustment.** Signed quantity and a required reason. Use this for damage, count corrections, and opening balances.
 - **Transfer.** Two rows in one action: negative at the source, positive at the destination, same absolute quantity, same `transfer_group_id`.
-- **Purchase order.** Draft lines (product, quantity, unit cost snapshot), then mark ordered. Receive some or all. Each receipt inserts `purchase_receipt` rows with positive quantity. Status becomes `partially_received` or `received` from those sums. Cancel is allowed only before any receipt.
+- **Purchase order.** Draft lines (product, quantity, unit cost snapshot), then approve and send. Receiving posts `purchase_receipt` rows with positive quantity. Status moves `draft` → `approved` → `sent` → `received`, or to `cancelled`. There is no partial-receipt status.
 
 Inventory value on Home is on-hand times the preferred supplier `unit_cost`. If no preferred cost exists, the UI shows the value as unknown.
 
