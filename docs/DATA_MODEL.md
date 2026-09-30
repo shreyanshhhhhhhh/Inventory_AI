@@ -34,6 +34,7 @@ erDiagram
   purchase_order_items |o--o{ stock_movements : receipt
   users ||--o{ stock_movements : recorded_by
   businesses ||--o{ audit_log : traces
+  businesses ||--o| autonomy_rules : configures
   users |o--o{ audit_log : actor
 ```
 
@@ -55,7 +56,8 @@ Quantity is signed. Inbound is positive. Outbound is negative. `SUM` is the bala
 
 | Type | Sign | Rows |
 | --- | --- | --- |
-| `purchase_receipt` | Positive | One row at the receiving location |
+| `receipt` | Positive | Manual inbound stock from the Inventory page. One row at the receiving location |
+| `purchase_receipt` | Positive | One row at the receiving location, linked to a purchase-order line |
 | `sale` | Negative | One row per SKU. A multi-SKU checkout shares `sale_group_id` |
 | `adjustment` | Positive or negative | One row. `reason` required |
 | `transfer` | Negative at source, positive at destination | Two rows, one `location_id` each, same `transfer_group_id`, same absolute quantity |
@@ -106,6 +108,16 @@ Inventory value is that on-hand sum times the preferred `product_suppliers.unit_
 | updated_at | datetime | |
 
 One business per user in Phase 1. No currency table.
+
+## autonomy_rules
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK, unique — one row per business |
+| auto_approve_below_amount | NUMERIC(18, 4) NULL | Stored only in Phase 1; no runtime effect until agents launch |
+| created_at | datetime | |
+| updated_at | datetime | |
 
 ## locations
 
@@ -198,7 +210,7 @@ Append-only. No update, no delete, no `updated_at`.
 | business_id | CHAR(36) | FK |
 | product_id | CHAR(36) | FK products. `ON DELETE RESTRICT` |
 | location_id | CHAR(36) | FK locations. Exactly one location per row |
-| movement_type | VARCHAR(32) | `purchase_receipt`, `sale`, `adjustment`, `transfer` |
+| movement_type | VARCHAR(32) | `receipt`, `purchase_receipt`, `sale`, `adjustment`, `transfer` |
 | quantity | NUMERIC(14, 4) | Signed. Non-zero |
 | reason | TEXT NULL | Required, non-blank, when type is `adjustment` |
 | note | TEXT NULL | |
@@ -213,6 +225,7 @@ Checks:
 
 - `movement_type` is one of the four values.
 - `quantity <> 0`.
+- `receipt` implies `quantity > 0`.
 - `purchase_receipt` implies `quantity > 0`.
 - `sale` implies `quantity < 0`.
 - `adjustment` implies `reason` is non-blank.

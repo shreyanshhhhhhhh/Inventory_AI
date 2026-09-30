@@ -3,9 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Menu } from "lucide-react";
+import {
+  ChevronRight,
+  LogOut,
+  Menu,
+  User,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Separator } from "@/components/ui/separator";
 import {
   Sheet,
   SheetContent,
@@ -13,15 +26,10 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { navItems, type NavItem } from "@/lib/nav";
+import { useAuth } from "@/lib/auth-context";
+import { getSectionLabel, isNavActive } from "@/lib/breadcrumbs";
+import { navItems } from "@/lib/nav";
 import { cn } from "@/lib/utils";
-
-function isActive(pathname: string, href: NavItem["href"]): boolean {
-  if (href === "/") {
-    return pathname === "/";
-  }
-  return pathname === href || pathname.startsWith(`${href}/`);
-}
 
 function Brand() {
   return (
@@ -39,7 +47,7 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
     <nav className="flex flex-col gap-1" aria-label="Primary">
       {navItems.map((item) => {
         const Icon = item.icon;
-        const active = isActive(pathname, item.href);
+        const active = isNavActive(pathname, item.href);
         return (
           <Link
             key={item.href}
@@ -60,8 +68,62 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+function SidebarFooter() {
+  const { user, business, logout } = useAuth();
+
+  return (
+    <div className="mt-auto border-t border-sidebar-border p-3">
+      <p className="truncate px-3 text-xs font-medium text-sidebar-foreground">
+        {business?.name ?? "Your business"}
+      </p>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              className="mt-2 w-full justify-start gap-2 px-3"
+            />
+          }
+        >
+          <User className="size-4" />
+          <span className="truncate text-sm">
+            {user?.full_name ?? "Account"}
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-48">
+          <DropdownMenuItem disabled>
+            <User />
+            Profile
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => void logout()}>
+            <LogOut />
+            Logout
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function MobileSidebarContent({ onNavigate }: { onNavigate: () => void }) {
+  return (
+    <div className="flex h-full flex-col">
+      <SheetHeader>
+        <SheetTitle>Inventory</SheetTitle>
+      </SheetHeader>
+      <div className="px-2 py-2">
+        <NavLinks onNavigate={onNavigate} />
+      </div>
+      <SidebarFooter />
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const sectionLabel = getSectionLabel(pathname);
 
   return (
     <div className="flex min-h-full flex-1">
@@ -69,36 +131,50 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="p-3">
           <Brand />
         </div>
-        <div className="px-2 pb-4">
+        <div className="flex-1 px-2 pb-4">
           <NavLinks />
         </div>
+        <SidebarFooter />
       </aside>
+
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center gap-3 border-b px-4 py-3 md:hidden">
-          <Sheet open={open} onOpenChange={(next) => setOpen(next)}>
-            <SheetTrigger
-              render={
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label="Open navigation"
-                />
-              }
+        <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/80">
+          <div className="flex items-center gap-3 px-4 py-3 md:px-6">
+            <Sheet open={open} onOpenChange={setOpen}>
+              <SheetTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="md:hidden"
+                    aria-label="Open navigation"
+                  />
+                }
+              >
+                <Menu />
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 bg-sidebar p-0">
+                <MobileSidebarContent onNavigate={() => setOpen(false)} />
+              </SheetContent>
+            </Sheet>
+
+            <nav
+              aria-label="Breadcrumb"
+              className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground"
             >
-              <Menu />
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 bg-sidebar">
-              <SheetHeader>
-                <SheetTitle>Inventory</SheetTitle>
-              </SheetHeader>
-              <div className="px-2">
-                <NavLinks onNavigate={() => setOpen(false)} />
-              </div>
-            </SheetContent>
-          </Sheet>
-          <p className="text-sm font-semibold">Inventory</p>
+              <span className="hidden font-medium text-foreground sm:inline">
+                Inventory
+              </span>
+              <ChevronRight className="hidden size-4 sm:inline" />
+              <span className="truncate font-medium text-foreground">
+                {sectionLabel}
+              </span>
+            </nav>
+          </div>
+          <Separator />
         </header>
-        <main className="flex-1 p-4 md:p-8">{children}</main>
+
+        <main className="flex-1 px-4 py-6 md:px-6 md:py-8">{children}</main>
       </div>
     </div>
   );

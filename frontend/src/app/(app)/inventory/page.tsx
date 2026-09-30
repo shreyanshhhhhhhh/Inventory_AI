@@ -1,5 +1,10 @@
-import { SectionPlaceholder } from "@/components/section-placeholder";
+import { PageContainer } from "@/components/common/page-container";
+import { InventoryPageContent } from "@/components/inventory/inventory-page-content";
 
 export default function InventoryPage() {
-  return <SectionPlaceholder title="Inventory" />;
+  return (
+    <PageContainer>
+      <InventoryPageContent />
+    </PageContainer>
+  );
 }

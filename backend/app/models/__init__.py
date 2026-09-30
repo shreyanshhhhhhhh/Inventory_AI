@@ -2,6 +2,7 @@
 
 from app.models.entities import (
     AuditLog,
+    AutonomyRules,
     Business,
     Category,
     Location,
@@ -18,6 +19,7 @@ from app.db import Base
 
 __all__ = [
     "AuditLog",
+    "AutonomyRules",
     "Base",
     "Business",
     "Category",

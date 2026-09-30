@@ -20,4 +20,7 @@ def current_business_route(
     try:
         return current_business(db, business_id=user.business_id)
     except AuthError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"detail": exc.message, "code": exc.code},
+        ) from exc

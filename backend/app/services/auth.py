@@ -11,7 +11,8 @@ from app.core.security import (
     hash_refresh_token,
     verify_password,
 )
-from app.models import AuditLog, Business, RefreshToken, User
+from app.models import Business, Location, RefreshToken, User
+from app.services.audit import log_action
 from app.models.types import new_id, utcnow
 from app.repositories.businesses import get_business
 from app.repositories.refresh_tokens import get_refresh_token_by_hash
@@ -22,10 +23,27 @@ DEFAULT_CURRENCY = "USD"
 
 
 class AuthError(Exception):
-    def __init__(self, message: str, status_code: int = 401) -> None:
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 401,
+        *,
+        code: str | None = None,
+    ) -> None:
         self.message = message
         self.status_code = status_code
+        self.code = code or _auth_error_code(status_code)
         super().__init__(message)
+
+
+def _auth_error_code(status_code: int) -> str:
+    if status_code == 409:
+        return "conflict"
+    if status_code == 403:
+        return "forbidden"
+    if status_code == 404:
+        return "not_found"
+    return "unauthorized"
 
 
 def signup(
@@ -54,25 +72,32 @@ def signup(
         role="owner",
         is_active=True,
     )
+    location = Location(
+        id=new_id(),
+        business_id=business.id,
+        name="Main location",
+        is_default=True,
+    )
     session.add(business)
     session.add(user)
+    session.add(location)
     session.flush()
-    session.add(
-        AuditLog(
-            business_id=business.id,
-            actor_user_id=user.id,
-            actor_type="user",
-            action="auth.signup",
-            entity_type="business",
-            entity_id=business.id,
-            before_data=None,
-            after_data={
-                "business_name": business.name,
-                "currency_code": business.currency_code,
-                "user_id": user.id,
-                "email": user.email,
-            },
-        )
+    log_action(
+        session,
+        business_id=business.id,
+        actor_user_id=user.id,
+        action="auth.signup",
+        entity_type="business",
+        entity_id=business.id,
+        before_data=None,
+        after_data={
+            "business_name": business.name,
+            "currency_code": business.currency_code,
+            "user_id": user.id,
+            "email": user.email,
+            "default_location_id": location.id,
+            "default_location_name": location.name,
+        },
     )
     raw_refresh = _issue_refresh_token(session, user)
     try:

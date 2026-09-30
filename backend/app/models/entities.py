@@ -140,6 +140,9 @@ class Product(IdMixin, TimestampMixin, Base):
 
 class Supplier(IdMixin, TimestampMixin, Base):
     __tablename__ = "suppliers"
+    __table_args__ = (
+        CheckConstraint("lead_time_days >= 0", name="lead_time_nonnegative"),
+    )
 
     business_id: Mapped[str] = mapped_column(
         CHAR(36),
@@ -149,6 +152,7 @@ class Supplier(IdMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     email: Mapped[str | None] = mapped_column(String(320), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    lead_time_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     archived_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
@@ -248,8 +252,12 @@ class StockMovement(IdMixin, Base):
     __tablename__ = "stock_movements"
     __table_args__ = (
         CheckConstraint(
-            "movement_type IN ('purchase_receipt', 'sale', 'adjustment', 'transfer')",
+            "movement_type IN ('receipt', 'purchase_receipt', 'sale', 'adjustment', 'transfer')",
             name="movement_type_known",
+        ),
+        CheckConstraint(
+            "movement_type != 'receipt' OR quantity > 0",
+            name="manual_receipt_quantity_positive",
         ),
         CheckConstraint("quantity <> 0", name="quantity_nonzero"),
         CheckConstraint(
@@ -317,6 +325,18 @@ class StockMovement(IdMixin, Base):
         ForeignKey("users.id", ondelete="RESTRICT"),
         nullable=False,
     )
+
+
+class AutonomyRules(IdMixin, TimestampMixin, Base):
+    __tablename__ = "autonomy_rules"
+    __table_args__ = (UniqueConstraint("business_id", name="uq_autonomy_rules_business_id"),)
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    auto_approve_below_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
 
 
 class AuditLog(IdMixin, Base):

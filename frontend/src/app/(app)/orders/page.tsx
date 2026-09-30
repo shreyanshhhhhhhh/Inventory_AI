@@ -1,5 +1,10 @@
-import { SectionPlaceholder } from "@/components/section-placeholder";
+import { PageContainer } from "@/components/common/page-container";
+import { OrdersPageContent } from "@/components/orders/orders-page-content";
 
 export default function OrdersPage() {
-  return <SectionPlaceholder title="Orders & Suppliers" />;
+  return (
+    <PageContainer>
+      <OrdersPageContent />
+    </PageContainer>
+  );
 }

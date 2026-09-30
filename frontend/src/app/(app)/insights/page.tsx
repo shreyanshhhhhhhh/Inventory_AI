@@ -1,7 +1,10 @@
-import { SectionPlaceholder } from "@/components/section-placeholder";
+import { PageContainer } from "@/components/common/page-container";
+import { InsightsPageContent } from "@/components/insights/insights-page-content";
 
 export default function InsightsPage() {
   return (
-    <SectionPlaceholder title="Insights" description="Not in this version." />
+    <PageContainer>
+      <InsightsPageContent />
+    </PageContainer>
   );
 }

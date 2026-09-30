@@ -5,7 +5,7 @@ import {
   Package,
   Settings,
   Truck,
-  Users,
+  Wallet,
   Warehouse,
   type LucideIcon,
 } from "lucide-react";
@@ -31,6 +31,6 @@ export const navItems: NavItem[] = [
   { href: "/orders", label: "Orders & Suppliers", icon: Truck },
   { href: "/inbox", label: "Agent Inbox", icon: Inbox },
   { href: "/insights", label: "Insights", icon: ChartLine },
-  { href: "/accounts", label: "Accounts", icon: Users },
+  { href: "/accounts", label: "Accounts", icon: Wallet },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

@@ -29,7 +29,10 @@ def signup_route(body: SignupRequest, db: Session = Depends(get_db)) -> TokenRes
             business_name=body.business_name,
         )
     except AuthError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"detail": exc.message, "code": exc.code},
+        ) from exc
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -37,7 +40,10 @@ def login_route(body: LoginRequest, db: Session = Depends(get_db)) -> TokenRespo
     try:
         return login(db, email=body.email, password=body.password)
     except AuthError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"detail": exc.message, "code": exc.code},
+        ) from exc
 
 
 @router.post("/refresh", response_model=TokenResponse)
@@ -45,7 +51,10 @@ def refresh_route(body: RefreshRequest, db: Session = Depends(get_db)) -> TokenR
     try:
         return refresh(db, raw_token=body.refresh_token)
     except AuthError as exc:
-        raise HTTPException(status_code=exc.status_code, detail=exc.message) from exc
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"detail": exc.message, "code": exc.code},
+        ) from exc
 
 
 @router.post("/logout", status_code=204)

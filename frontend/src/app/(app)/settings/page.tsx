@@ -1,5 +1,10 @@
-import { SectionPlaceholder } from "@/components/section-placeholder";
+import { PageContainer } from "@/components/common/page-container";
+import { SettingsPageContent } from "@/components/settings/settings-page-content";
 
 export default function SettingsPage() {
-  return <SectionPlaceholder title="Settings" />;
+  return (
+    <PageContainer>
+      <SettingsPageContent />
+    </PageContainer>
+  );
 }

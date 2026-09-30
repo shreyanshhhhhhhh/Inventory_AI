@@ -11,9 +11,23 @@ Read these before changing the product:
 
 Current implementation scope is Phase 1 only: catalog, stock ledger, purchase orders, suppliers, basic dashboard, auth, and onboarding.
 
+## Permanent backend rules
+
+- **Layers:** routers (thin) → services (ALL business logic, plain functions taking a `Session`, because they become agent tools later) → repositories/models.
+- **Tenant scope:** every tenant table has `business_id`; every query filters by the current user's `business_id` from the JWT.
+- **Stock ledger:** append-only; current stock is derived; nothing edits stock outside the ledger service.
+- **Types and API shape:** `Decimal` for money, UTC timestamps, Pydantic schemas for all requests/responses (never return ORM objects), type hints everywhere, consistent error format `{"detail": "...", "code": "..."}`, all application routes under `/api/v1` (`/health` stays at the root).
+- **Audit:** every create/update/delete/transition writes an `audit_log` entry through `log_action(...)`.
+- **Tests and docs:** each change ships with pytest tests; update `docs/` when design changes; small commits.
+
+## Permanent frontend rules
+
+- Keep hook names and return shapes stable when swapping mock data for API calls.
+- Use the typed API client in `src/lib/api.ts` with JWT storage and `{detail, code}` error handling.
+
 ## Layout
 
-Monorepo. Do not invent a third app. Create these trees when implementation starts; do not create them as empty placeholders during planning.
+Monorepo. Do not invent a third app.
 
 ```
 frontend/                 Next.js App Router
@@ -66,6 +80,8 @@ Phase 1 requires pytest for service-layer behavior, on SQLite, using the same mo
 - no update or delete path for ledger rows
 - Decimal money survives a write and read
 - tenant isolation
+
+Reuse `tests/helpers/tenant.py` for tenant-isolation checks in new slices.
 
 Do not add a frontend test framework in Phase 1. Walk the flows in `docs/WORKFLOW.md` by hand.
 
