@@ -1,0 +1,31 @@
+[project]
+name = "inventory-backend"
+version = "0.1.0"
+description = "Inventory API for a small retailer"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.6,<1",
+    "uvicorn[standard]>=0.34.0,<1",
+    "sqlalchemy>=2.0.36,<3",
+    "alembic>=1.14.0,<2",
+    "pydantic>=2.10.4,<3",
+    "pydantic-settings>=2.7.0,<3",
+    "python-dotenv>=1.0.1,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4,<9",
+    "httpx2>=2.0.0,<3",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
