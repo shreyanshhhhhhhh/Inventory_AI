@@ -1,0 +1,301 @@
+# Data model
+
+Phase 1 schema only. No forecast tables, no LangGraph checkpoint tables, no inbox tables.
+
+**Multi-tenant assumption:** a user belongs to one business. Almost every row is scoped by `business_id`. The API takes `business_id` from the JWT, not from the client. Exception: `refresh_tokens` hang off `users`, and `users.business_id` is null only until the owner finishes onboarding.
+
+SQLite and PostgreSQL use the same models.
+
+- Ids are UUID strings, `CHAR(36)`, generated in the app. Not a native Postgres `UUID` column.
+- Enums are `VARCHAR` plus `CHECK`, not native enum types.
+- Money is `NUMERIC(18, 4)`. Quantity is `NUMERIC(14, 4)`. Both are `Decimal` in Python. Never float. JSON sends them as strings.
+- Timestamps are timezone-aware UTC, mapped as SQLAlchemy `DateTime(timezone=True)`, not a Postgres-only `timestamptz` column. Tables below call that type `datetime`.
+- `created_at` / `updated_at` appear on mutable rows. The ledger and audit log are insert-only and have no `updated_at`.
+
+## Relationships
+
+```mermaid
+erDiagram
+  businesses ||--o{ users : has
+  users ||--o{ refresh_tokens : sessions
+  businesses ||--o{ locations : has
+  businesses ||--o{ categories : has
+  businesses ||--o{ products : has
+  categories |o--o{ products : classifies
+  businesses ||--o{ suppliers : has
+  products ||--o{ product_suppliers : sourced_as
+  suppliers ||--o{ product_suppliers : offers
+  suppliers ||--o{ purchase_orders : fulfills
+  locations ||--o{ purchase_orders : ship_to
+  purchase_orders ||--o{ purchase_order_items : lines
+  products ||--o{ purchase_order_items : ordered
+  products ||--o{ stock_movements : moves
+  locations ||--o{ stock_movements : at
+  purchase_order_items |o--o{ stock_movements : receipt
+  users ||--o{ stock_movements : recorded_by
+  businesses ||--o{ audit_log : traces
+  users |o--o{ audit_log : actor
+```
+
+`users.business_id` is null only before onboarding completes. After that it is required. The diagram shows the steady state.
+
+## Derived stock
+
+There is no on-hand column. For one product at one location:
+
+```sql
+SELECT COALESCE(SUM(quantity), 0) AS on_hand
+FROM stock_movements
+WHERE business_id = :business_id
+  AND product_id = :product_id
+  AND location_id = :location_id;
+```
+
+Quantity is signed. Inbound is positive. Outbound is negative. `SUM` is the balance.
+
+| Type | Sign | Rows |
+| --- | --- | --- |
+| `purchase_receipt` | Positive | One row at the receiving location |
+| `sale` | Negative | One row per SKU. A multi-SKU checkout shares `sale_group_id` |
+| `adjustment` | Positive or negative | One row. `reason` required |
+| `transfer` | Negative at source, positive at destination | Two rows, one `location_id` each, same `transfer_group_id`, same absolute quantity |
+
+Received quantity on a purchase-order line is `SUM(quantity)` of `purchase_receipt` rows with that `purchase_order_item_id`. It is not stored on the line.
+
+Inventory value is that on-hand sum times the preferred `product_suppliers.unit_cost`. It is computed, not stored.
+
+`actor_type` on `audit_log` is the forward-looking hook. Phase 1 only writes `user`. A later phase may write `agent` and may add explanation storage. Do not add those tables now.
+
+## users
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) NULL | FK businesses. Null only before onboarding |
+| email | VARCHAR(320) | Unique, stored lowercase |
+| password_hash | VARCHAR(255) | argon2id |
+| full_name | VARCHAR(200) | |
+| role | VARCHAR(20) NULL | `owner` or `staff`. Null only before onboarding |
+| is_active | BOOLEAN | Default true. Deactivate, do not delete |
+| invited_by_user_id | CHAR(36) NULL | FK users. Set when an owner creates staff |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+`CHECK (role IN ('owner', 'staff'))` when role is not null. One owner per business, enforced in the service.
+
+## refresh_tokens
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| user_id | CHAR(36) | FK users |
+| token_hash | CHAR(64) | SHA-256 hex of the opaque token. Never store the raw token |
+| expires_at | datetime | |
+| revoked_at | datetime NULL | Set on logout and on rotation |
+| created_at | datetime | |
+
+## businesses
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| name | VARCHAR(200) | |
+| currency_code | CHAR(3) | ISO 4217, uppercase. Immutable after onboarding |
+| onboarding_completed_at | datetime NULL | |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+One business per user in Phase 1. No currency table.
+
+## locations
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| name | VARCHAR(200) | Unique per business |
+| is_default | BOOLEAN | Service keeps exactly one default among active locations |
+| address | TEXT NULL | |
+| archived_at | datetime NULL | Archive, do not delete, once movements exist |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+The last active location cannot be archived.
+
+## categories
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| name | VARCHAR(200) | Unique per business |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+Flat list. `products.category_id` is `ON DELETE SET NULL`.
+
+## products
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| sku | VARCHAR(64) | Unique per business, including archived rows |
+| name | VARCHAR(200) | |
+| description | TEXT NULL | |
+| category_id | CHAR(36) NULL | FK categories |
+| unit | VARCHAR(32) | Default `each`. No unit conversion in Phase 1 |
+| reorder_point | NUMERIC(14, 4) NULL | Compared with on-hand summed across locations. Null means no alert |
+| archived_at | datetime NULL | Soft delete. Ledger rows keep the FK |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+Archived products are hidden from the default catalog and cannot be added to new movements or new purchase orders.
+
+## suppliers
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| name | VARCHAR(200) | |
+| email | VARCHAR(320) NULL | |
+| phone | VARCHAR(40) NULL | |
+| notes | TEXT NULL | |
+| archived_at | datetime NULL | |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+Archived suppliers cannot be used on new purchase orders. Existing orders stay.
+
+## product_suppliers
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK. Must match the product and the supplier |
+| product_id | CHAR(36) | FK products |
+| supplier_id | CHAR(36) | FK suppliers |
+| supplier_sku | VARCHAR(64) NULL | |
+| unit_cost | NUMERIC(18, 4) | Decimal. Business currency |
+| lead_time_days | INTEGER | `>= 0` |
+| is_preferred | BOOLEAN | Default false |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+Unique `(product_id, supplier_id)`. At most one `is_preferred` per product, enforced in the service (a partial unique index is not portable).
+
+## stock_movements
+
+Append-only. No update, no delete, no `updated_at`.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| product_id | CHAR(36) | FK products. `ON DELETE RESTRICT` |
+| location_id | CHAR(36) | FK locations. Exactly one location per row |
+| movement_type | VARCHAR(32) | `purchase_receipt`, `sale`, `adjustment`, `transfer` |
+| quantity | NUMERIC(14, 4) | Signed. Non-zero |
+| reason | TEXT NULL | Required, non-blank, when type is `adjustment` |
+| note | TEXT NULL | |
+| transfer_group_id | CHAR(36) NULL | Set on both rows of a transfer. Null otherwise |
+| sale_group_id | CHAR(36) NULL | Shared by lines of one sale. Null otherwise |
+| purchase_order_item_id | CHAR(36) NULL | Required on `purchase_receipt`. Null on every other type |
+| occurred_at | datetime | Business time. Not in the future |
+| created_at | datetime | Insert time |
+| created_by_user_id | CHAR(36) | FK users |
+
+Checks:
+
+- `movement_type` is one of the four values.
+- `quantity <> 0`.
+- `purchase_receipt` implies `quantity > 0`.
+- `sale` implies `quantity < 0`.
+- `adjustment` implies `reason` is non-blank.
+- `transfer` implies `transfer_group_id` is not null. Other types imply it is null.
+- `sale` implies `sale_group_id` is not null (one id even for a single line). Other types imply it is null.
+- `purchase_receipt` implies `purchase_order_item_id` is not null. Other types imply it is null. Ad-hoc inbound stock is an `adjustment` with a reason, not a receipt.
+
+Service rules the database cannot express portably:
+
+- A transfer inserts two rows in one transaction: opposite signs, equal absolute quantity, same product, same group id, different locations.
+- Every `sale` row gets a `sale_group_id`. Lines posted together share one id.
+- A group of transfer rows sums to zero.
+- Reject a posting that would make on-hand negative at that location.
+- Reject a receipt that would make received quantity exceed `quantity_ordered`.
+- Reject movements dated in the future.
+- The repository exposes insert and select only.
+
+Index `(business_id, product_id, location_id)` for the on-hand sum. Index `transfer_group_id` and `purchase_order_item_id`.
+
+## purchase_orders
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| po_number | VARCHAR(32) | Unique per business. Service-assigned, for example `PO-0001` |
+| supplier_id | CHAR(36) | FK suppliers |
+| location_id | CHAR(36) | FK locations. Where stock will be received |
+| status | VARCHAR(32) | `draft`, `ordered`, `partially_received`, `received`, `cancelled` |
+| currency_code | CHAR(3) | Snapshot of the business currency at creation |
+| notes | TEXT NULL | |
+| ordered_at | datetime NULL | |
+| expected_on | DATE NULL | |
+| created_by_user_id | CHAR(36) | FK users |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+Status transitions, in the service: `draft` to `ordered` or `cancelled`; `ordered` to `partially_received`, `received`, or `cancelled` (cancel only when received quantity is still zero); `partially_received` to `received`. Lines are editable only in `draft`.
+
+## purchase_order_items
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| purchase_order_id | CHAR(36) | FK |
+| product_id | CHAR(36) | FK |
+| quantity_ordered | NUMERIC(14, 4) | `> 0` |
+| unit_cost | NUMERIC(18, 4) | Snapshot at order time. Decimal |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+Line total is `quantity_ordered * unit_cost`, computed in the service, not stored. Do not add `quantity_received`.
+
+## audit_log
+
+Insert-only. Who, what, when, before, after.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| actor_user_id | CHAR(36) NULL | Who. Always set in Phase 1 |
+| actor_type | VARCHAR(20) | What kind of actor. Phase 1 writes `user` only |
+| action | VARCHAR(80) | What, for example `stock.movement.post`, `purchase_order.receive`, `product.archive` |
+| entity_type | VARCHAR(80) | For example `product`, `stock_movement`, `purchase_order` |
+| entity_id | CHAR(36) | |
+| before_data | JSON NULL | Before. Null on create |
+| after_data | JSON NULL | After |
+| created_at | datetime | When |
+
+Written in the same transaction as the change. Phase 1 does not add `agent_run_id` or an explanation column.
+
+## Tenant and delete rules
+
+- Child business tables use `business_id` with `ON DELETE RESTRICT`.
+- `stock_movements` restrict deletes of products, locations, users, and purchase-order items.
+- Users and suppliers used by history are deactivated or archived, not deleted.
+- Categories may be deleted; products become uncategorized.
+
+## Service invariants to test
+
+- On-hand equals the sum of signed quantities.
+- Sales and transfer-outs are negative; receipts and transfer-ins are positive.
+- A transfer is exactly two rows, one location each, shared `transfer_group_id`, sum zero.
+- An adjustment without a reason fails.
+- No repository method updates or deletes `stock_movements`.
+- Money and quantity round-trip as `Decimal`, not float.
+- A query with business A's token never returns business B's rows.
