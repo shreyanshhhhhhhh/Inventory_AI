@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     cors_origins: str = "http://127.0.0.1:43123,http://localhost:43123"
     api_host: str = "0.0.0.0"
     api_port: int = 43124
+    jwt_secret: str
+    access_token_minutes: int = 15
+    refresh_token_days: int = 7
 
     @property
     def cors_origin_list(self) -> list[str]:

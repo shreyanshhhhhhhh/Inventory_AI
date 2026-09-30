@@ -33,7 +33,9 @@ source .venv/bin/activate
 pytest
 ```
 
-Settings come from environment variables (see `backend/.env.example`). `DATABASE_URL` defaults to a SQLite file, `inventory.db`, in the backend working directory.
+Settings come from environment variables (see `backend/.env.example`). `DATABASE_URL` defaults to a SQLite file, `inventory.db`, in the backend working directory. `JWT_SECRET` is required. Access tokens last 15 minutes. Refresh tokens last 7 days and are stored only as a SHA-256 hash.
+
+Auth routes: `POST /auth/signup`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/logout`, `GET /auth/me`. Signup creates the owner and one business (currency `USD`). The web app signs up at `/signup` and signs in at `/login`.
 
 ## Frontend
 

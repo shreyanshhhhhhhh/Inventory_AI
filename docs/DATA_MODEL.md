@@ -2,7 +2,7 @@
 
 Phase 1 schema only. No forecast tables, no LangGraph checkpoint tables, no inbox tables.
 
-**Multi-tenant assumption:** a user belongs to one business. Almost every row is scoped by `business_id`. The API takes `business_id` from the JWT, not from the client. Exception: `refresh_tokens` hang off `users`, and `users.business_id` is null only until the owner finishes onboarding.
+**Multi-tenant assumption:** a user belongs to one business. Almost every row is scoped by `business_id`. The API takes `business_id` from the JWT, not from the client. Exception: `refresh_tokens` hang off `users`. Signup creates the business and the owner together, so `users.business_id` is set immediately. The column stays nullable. `onboarding_completed_at` stays null until the onboarding wizard, which is not part of signup.
 
 SQLite and PostgreSQL use the same models.
 
@@ -37,7 +37,7 @@ erDiagram
   users |o--o{ audit_log : actor
 ```
 
-`users.business_id` is null only before onboarding completes. After that it is required. The diagram shows the steady state.
+Signup sets `users.business_id` and `role` (`owner`) in the same transaction as the business. Currency on that business is `USD` until onboarding changes it. `onboarding_completed_at` stays null until that wizard finishes. The diagram shows the steady state.
 
 ## Derived stock
 
@@ -100,7 +100,7 @@ Inventory value is that on-hand sum times the preferred `product_suppliers.unit_
 | --- | --- | --- |
 | id | CHAR(36) | PK |
 | name | VARCHAR(200) | |
-| currency_code | CHAR(3) | ISO 4217, uppercase. Immutable after onboarding |
+| currency_code | CHAR(3) | ISO 4217, uppercase. Signup stores `USD`. Immutable after onboarding |
 | onboarding_completed_at | datetime NULL | |
 | created_at | datetime | |
 | updated_at | datetime | |
