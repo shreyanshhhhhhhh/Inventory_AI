@@ -12,6 +12,7 @@ import {
 
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useInboxSuggestions } from "@/lib/chat/suggestions";
 import type {
   ApiDashboardActivityItem,
   ApiNeedsAttentionItem,
@@ -81,6 +82,7 @@ function mapActivity(item: ApiDashboardActivityItem): DashboardActivityItem {
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
+  const { pendingCount } = useInboxSuggestions();
   const [totalStockValue, setTotalStockValue] = useState(0);
   const [lowStockCount, setLowStockCount] = useState(0);
   const [openPurchaseOrderCount, setOpenPurchaseOrderCount] = useState(0);
@@ -137,7 +139,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       totalStockValue,
       lowStockCount,
       openPurchaseOrderCount,
-      pendingApprovals,
+      pendingApprovals: pendingApprovals + pendingCount,
       openExceptions,
       needsAttention,
       recentActivity,
@@ -150,6 +152,7 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
       lowStockCount,
       openPurchaseOrderCount,
       pendingApprovals,
+      pendingCount,
       openExceptions,
       needsAttention,
       recentActivity,

@@ -1,9 +1,12 @@
+from contextlib import asynccontextmanager
+
 from fastapi import APIRouter, FastAPI
 from fastapi.exceptions import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.core.errors import AppError, app_error_handler, http_error_handler
+from app.jobs.scheduler import start_scheduler, stop_scheduler
 from app.routers import (
     accounts,
     auth,
@@ -14,13 +17,22 @@ from app.routers import (
     health,
     insights,
     inventory,
+    jobs,
     onboarding,
     purchase_orders,
     sales,
 )
 from app.routers import settings as settings_router
 
-app = FastAPI(title="Inventory API")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    start_scheduler()
+    yield
+    stop_scheduler()
+
+
+app = FastAPI(title="Inventory API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,4 +60,5 @@ api_v1.include_router(settings_router.router)
 api_v1.include_router(sales.router)
 api_v1.include_router(onboarding.router)
 api_v1.include_router(chat.router)
+api_v1.include_router(jobs.router)
 app.include_router(api_v1)

@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     orchestrator_rate_limit_per_user_per_minute: int = 20
     orchestrator_confidence_min: float = 0.7
     orchestrator_chat_history: int = 6
+    job_secret: str | None = None
+    exception_scan_scheduler_enabled: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:

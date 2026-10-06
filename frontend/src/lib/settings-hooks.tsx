@@ -35,6 +35,8 @@ interface SettingsContextValue {
   locations: SettingsLocation[];
   teamUsers: SettingsTeamUser[];
   autoApproveBelow: string;
+  exceptionScanEnabled: boolean;
+  exceptionScanHourUtc: number;
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -58,7 +60,11 @@ interface SettingsContextValue {
     temporaryPassword: string;
   }) => Promise<void>;
   updateUserRole: (userId: string, role: "owner" | "staff") => Promise<void>;
-  saveAutonomyRules: (autoApproveBelow: string | null) => Promise<void>;
+  saveAutonomyRules: (input: {
+    autoApproveBelow: string | null;
+    exceptionScanEnabled: boolean;
+    exceptionScanHourUtc: number;
+  }) => Promise<void>;
 }
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -72,6 +78,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [locations, setLocations] = useState<SettingsLocation[]>([]);
   const [teamUsers, setTeamUsers] = useState<SettingsTeamUser[]>([]);
   const [autoApproveBelow, setAutoApproveBelow] = useState("");
+  const [exceptionScanEnabled, setExceptionScanEnabled] = useState(true);
+  const [exceptionScanHourUtc, setExceptionScanHourUtc] = useState(2);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -82,6 +90,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setLocations([]);
       setTeamUsers([]);
       setAutoApproveBelow("");
+      setExceptionScanEnabled(true);
+      setExceptionScanHourUtc(2);
       setIsLoading(false);
       return;
     }
@@ -115,6 +125,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         })),
       );
       setAutoApproveBelow(autonomy.auto_approve_below_amount ?? "");
+      setExceptionScanEnabled(autonomy.exception_scan_enabled);
+      setExceptionScanHourUtc(autonomy.exception_scan_hour_utc);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load settings.");
     } finally {
@@ -198,9 +210,15 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const saveAutonomyRules = useCallback(
-    async (value: string | null) => {
+    async (input: {
+      autoApproveBelow: string | null;
+      exceptionScanEnabled: boolean;
+      exceptionScanHourUtc: number;
+    }) => {
       await api.settings.autonomyRules.update({
-        auto_approve_below_amount: value,
+        auto_approve_below_amount: input.autoApproveBelow,
+        exception_scan_enabled: input.exceptionScanEnabled,
+        exception_scan_hour_utc: input.exceptionScanHourUtc,
       });
       await refresh();
     },
@@ -215,6 +233,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       locations,
       teamUsers,
       autoApproveBelow,
+      exceptionScanEnabled,
+      exceptionScanHourUtc,
       isLoading,
       error,
       refresh,
@@ -233,6 +253,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       locations,
       teamUsers,
       autoApproveBelow,
+      exceptionScanEnabled,
+      exceptionScanHourUtc,
       isLoading,
       error,
       refresh,

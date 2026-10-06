@@ -15,3 +15,11 @@ class ChatRunResponse(BaseModel):
 class ChatResumeRequest(BaseModel):
     action: Literal["run", "edit", "cancel"]
     plan: dict[str, Any] | None = None
+
+
+class ChatRunDetail(BaseModel):
+    id: str
+    status: str
+    input_text: str | None = None
+    plan: dict[str, Any] | None = None
+    events: list[dict[str, Any]] = Field(default_factory=list)

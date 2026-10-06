@@ -1,6 +1,6 @@
 # Data model
 
-Phase 1 schema, plus a computed Phase 2 demand forecast, the Phase 3 AI foundation tables (`agent_runs`, `agent_steps`, `agent_suggestions`, `llm_usage_counters`), orchestrator columns on `agent_runs`, and `chat_messages`. No forecast table, no LangGraph checkpoint tables, and no inbox UI tables.
+Phase 1 schema, plus a computed Phase 2 demand forecast, the Phase 3 AI foundation tables (`agent_runs`, `agent_steps`, `agent_suggestions`, `llm_usage_counters`), orchestrator columns on `agent_runs`, `chat_messages`, and `exceptions`. No forecast table, no LangGraph checkpoint tables, and no inbox UI tables.
 
 **Multi-tenant assumption:** a user belongs to one business. Almost every row is scoped by `business_id`. The API takes `business_id` from the JWT, not from the client. Exception: `refresh_tokens` hang off `users`. Signup creates the business and the owner together, so `users.business_id` is set immediately. The column stays nullable. `onboarding_completed_at` stays null until the onboarding wizard, which is not part of signup.
 
@@ -35,6 +35,9 @@ erDiagram
   users ||--o{ stock_movements : recorded_by
   businesses ||--o{ audit_log : traces
   businesses ||--o| autonomy_rules : configures
+  businesses ||--o{ exceptions : flags
+  agent_runs |o--o{ exceptions : scan
+  agent_suggestions |o--o{ exceptions : recommends
   users |o--o{ audit_log : actor
   businesses ||--o{ agent_runs : traces
   users |o--o{ agent_runs : actor
@@ -125,7 +128,10 @@ One business per user in Phase 1. No currency table.
 | --- | --- | --- |
 | id | CHAR(36) | PK |
 | business_id | CHAR(36) | FK, unique — one row per business |
-| auto_approve_below_amount | NUMERIC(18, 4) NULL | Stored only in Phase 1; no runtime effect until agents launch |
+| auto_approve_below_amount | NUMERIC(18, 4) NULL | Stored for a later auto-approve path |
+| exception_scan_enabled | BOOLEAN | Default true. Owner can turn off nightly scans |
+| exception_scan_hour_utc | INTEGER | Default 2. Hour in UTC for the scheduled scan |
+| exception_scan_last_run_on | DATE NULL | UTC date of the last completed scan |
 | created_at | datetime | |
 | updated_at | datetime | |
 
@@ -364,6 +370,29 @@ The only write target for agent tools in this foundation. Tools never create pur
 | status | VARCHAR(20) | `pending` on create. Later inbox phases may set `approved`, `rejected`, `dismissed` |
 | payload | JSON | Lines, supplier, email draft, or a free-form summary |
 | created_at | datetime | |
+
+## exceptions
+
+Open findings from the exception monitor. Dedupe is unique among **open** rows per `(business_id, dedupe_key)`.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| exception_type | VARCHAR(40) | `stockout_risk`, `overstock`, `demand_spike`, `demand_drop`, `supplier_delay`, `data_anomaly` |
+| severity | VARCHAR(20) | `low`, `medium`, `high`, `critical` |
+| status | VARCHAR(20) | `open`, `resolved`, `ignored` |
+| entity_type | VARCHAR(80) | `product`, `purchase_order`, `supplier`, `stock_movement` |
+| entity_id | CHAR(36) | |
+| dedupe_key | VARCHAR(240) | Stable id so a nightly run does not recreate the same open issue |
+| title | VARCHAR(240) | |
+| evidence | JSON | Numbers and dates from detectors |
+| recommended_action | VARCHAR(40) NULL | Playbook action |
+| rationale | TEXT NULL | LLM sentence, clipped to playbook |
+| suggestion_id | CHAR(36) NULL | FK agent_suggestions when approval is needed |
+| run_id | CHAR(36) NULL | FK agent_runs |
+| created_at | datetime | |
+| updated_at | datetime | |
 
 ## llm_usage_counters
 

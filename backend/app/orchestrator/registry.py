@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.agents.context import AgentContext
+from app.agents.exception_monitor import exception_monitor_handler
+from app.agents.forecast import forecast_agent_handler
 from app.orchestrator.types import TypedResult
 
 
@@ -132,21 +134,23 @@ def _guardrail_handler(
 def build_default_registry() -> AgentRegistry:
     registry = AgentRegistry()
     registry.register(
-        _placeholder(
-            "forecast",
+        AgentSpec(
+            name="forecast",
+            description="Demand forecast and on-hand stock reads.",
             tasks=frozenset({"forecast", "get_stock"}),
             write_tasks=frozenset(),
-            cards={"forecast": "forecast_chart", "get_stock": "stock_table"},
-            description="Demand forecast and on-hand stock reads.",
+            card_type_for_task={"forecast": "forecast_chart", "get_stock": "stock_table"},
+            handler=forecast_agent_handler,
         )
     )
     registry.register(
-        _placeholder(
-            "exception_monitor",
+        AgentSpec(
+            name="exception_monitor",
+            description="Deterministic exception scan with playbook-ranked suggestions.",
             tasks=frozenset({"scan"}),
             write_tasks=frozenset(),
-            cards={"scan": "exception_list"},
-            description="Stockout, overdue PO, and receive-mismatch scans.",
+            card_type_for_task={"scan": "exception_list"},
+            handler=exception_monitor_handler,
         )
     )
     registry.register(

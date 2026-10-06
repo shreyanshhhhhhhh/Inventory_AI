@@ -2,7 +2,7 @@
 
 A small-shop inventory app: catalog, stock ledger, suppliers, purchase orders, dashboard, and team settings. The browser is a Next.js app. It talks only to a FastAPI API. Local development uses SQLite; deploy uses PostgreSQL through the same models.
 
-**Orchestrator plumbing is in.** Chat runs live at `/api/v1/chat`. Agent Inbox in the UI is still a placeholder. Insights shows a 14-day demand forecast per SKU from real sales, plus movement and top-seller charts. Forecasts do not create purchase orders.
+**Orchestrator plumbing is in.** Chat runs live at `/api/v1/chat`. Agent Inbox streams those events in a chat UI. Insights shows a 14-day demand forecast per SKU from real sales, plus movement and top-seller charts. Forecasts do not create purchase orders.
 
 ## Ports
 
@@ -75,9 +75,11 @@ Open http://127.0.0.1:43123, sign up at `/signup`, then use the app. Owners can 
 - **Home** — dashboard summary, needs attention, recent activity
 - **Insights** — 14-day demand forecast per SKU, plus movements-over-time and top-sellers charts (read-only)
 - **Accounts** — stock value, open PO value, payables, supplier totals (read-only)
-- **Settings** — business profile, locations, team (owner-only), autonomy rules (stored only)
+- **Settings** — business profile, locations, team (owner-only), autonomy rules including nightly exception scan
 - **Onboarding** — demo seed API and `scripts/seed_demo.py`
-- **Chat orchestrator** — `POST /api/v1/chat/runs`, SSE events, cancel/resume. Placeholder agents only. See `docs/ORCHESTRATOR.md`.
+- **Agent Inbox** — SSE chat, plan checklist, suggestion cards, Approvals tab. `/stock` and `/forecast` use the forecast agent. `/scan` runs the exception monitor. Other agents are still placeholders. See `docs/ORCHESTRATOR.md`.
+- **Chat orchestrator** — `POST /api/v1/chat/runs`, `GET /api/v1/chat/runs/{id}`, SSE events, cancel/resume.
+- **Jobs** — `POST /api/v1/jobs/exception-scan` (owner JWT or `X-Job-Secret`)
 
 Staff users can manage day-to-day stock and orders. Only **owners** can approve purchase orders, change settings, and manage team members.
 

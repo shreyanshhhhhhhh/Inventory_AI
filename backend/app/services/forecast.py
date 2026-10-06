@@ -99,6 +99,42 @@ def get_forecast(
     }
 
 
+def get_history(
+    session: Session,
+    *,
+    business_id: str,
+    product_id: str | None = None,
+    history_days: int = HISTORY_DAYS,
+) -> dict[str, object]:
+    history_days, _horizon = _validate_window(history_days, HORIZON_DAYS)
+    start, end, day_list = _window(history_days)
+    if product_id is None:
+        products = _active_products(session, business_id)
+    else:
+        product = session.scalar(
+            select(Product).where(
+                Product.id == product_id,
+                Product.business_id == business_id,
+                Product.archived_at.is_(None),
+            )
+        )
+        if product is None:
+            raise ForecastError("Product not found.", status_code=404, code="not_found")
+        products = [product]
+    totals = _sale_totals(
+        session,
+        business_id=business_id,
+        start=start,
+        end=end,
+        product_id=product_id,
+    )
+    items = [
+        _history_item(product, totals.get(product.id, {}), day_list=day_list)
+        for product in products
+    ]
+    return {"history_days": history_days, "items": items}
+
+
 def _validate_window(history_days: int, horizon_days: int) -> tuple[int, int]:
     if history_days < SEASON_LENGTH or history_days > 180:
         raise ForecastError("History window must be between 7 and 180 days.")
@@ -193,6 +229,23 @@ def _forecast_item(
         item["history"] = [{"date": day, "units": units} for day, units in history]
         item["forecast"] = [{"date": day, "units": units} for day, units in forecast_points]
     return item
+
+
+def _history_item(
+    product: Product,
+    units_by_day: dict[date, Decimal],
+    *,
+    day_list: list[date],
+) -> dict[str, object]:
+    history = [(day, _q(units_by_day.get(day, Decimal("0")))) for day in day_list]
+    history_units = _q(sum((units for _, units in history), Decimal("0")))
+    return {
+        "product_id": product.id,
+        "sku": product.sku,
+        "product_name": product.name,
+        "history_units": history_units,
+        "history": [{"date": day, "units": units} for day, units in history],
+    }
 
 
 def _project(

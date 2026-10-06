@@ -65,3 +65,14 @@ orchestrator_summary:
   text: '{"summary":"Placeholder agents reported that they are not implemented yet."}'
   tokens_in: 16
   tokens_out: 10
+forecast_interpret:
+  text: '{"interpretation":"Demand looks stable under the chosen model."}'
+  tokens_in: 14
+  tokens_out: 8
+exception_rank:
+  match:
+    - contains: "hack_the_ledger"
+      text: '{"rankings":[{"dedupe_key":"stockout_risk:p1","action":"hack_the_ledger","rationale":"Outside the playbook."}]}'
+  text: '{"rankings":[]}'
+  tokens_in: 18
+  tokens_out: 10

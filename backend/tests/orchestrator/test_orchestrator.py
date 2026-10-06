@@ -162,8 +162,8 @@ def test_parallel_steps_run_concurrently(db) -> None:
         [
             PlanStep(
                 id="s1",
-                agent="exception_monitor",
-                task="scan",
+                agent="explainer",
+                task="explain",
                 depends_on=[],
                 is_write=False,
                 params={"_delay_seconds": 0.3},
@@ -322,6 +322,19 @@ def test_tenant_cannot_access_another_business_run(client, db) -> None:
         headers=auth_headers(second.access_token),
     )
     assert denied.status_code == 404
+    denied_detail = client.get(
+        f"/api/v1/chat/runs/{run_id}",
+        headers=auth_headers(second.access_token),
+    )
+    assert denied_detail.status_code == 404
+    own = client.get(
+        f"/api/v1/chat/runs/{run_id}",
+        headers=auth_headers(first.access_token),
+    )
+    assert own.status_code == 200
+    body = own.json()
+    assert body["id"] == run_id
+    assert isinstance(body["events"], list)
     also = client.post(
         f"/api/v1/chat/runs/{run_id}/cancel",
         headers=auth_headers(second.access_token),

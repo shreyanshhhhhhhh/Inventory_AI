@@ -34,6 +34,13 @@ def resolve_entity_ids(
 
     product_name = str(resolved.get("product_name") or "").strip()
     sku = str(resolved.get("sku") or "").strip()
+    query = str(resolved.get("query") or "").strip()
+    if not sku and query:
+        by_sku = get_product_by_sku(session, business_id, query)
+        if by_sku is not None:
+            sku = by_sku.sku
+        elif not product_name:
+            product_name = query
     if sku:
         product = get_product_by_sku(session, business_id, sku)
         if product is not None:

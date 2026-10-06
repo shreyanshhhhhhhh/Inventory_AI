@@ -2,7 +2,7 @@
 
 The chat orchestrator turns slash commands and free text, including compound requests, into a validated DAG of agent tasks. It is the full Phase 3A orchestrator: understand, validate, plan, optional plan approval, dispatch, aggregate, and reply.
 
-Concrete agents are still placeholders. They return typed `not implemented yet` results so the plumbing can be tested with `LLM_PROVIDER=fake`. Write steps never create purchase orders, send email, or post stock. They only exist as later suggestion work.
+`forecast` and `exception_monitor` are filled in. Other concrete agents are still placeholders. They return typed `not implemented yet` results so the plumbing can be tested with `LLM_PROVIDER=fake`. Write steps never create purchase orders, send email, or post stock. They only insert `agent_suggestions`. Exception findings also persist to `exceptions`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [PLAN.md](PLAN.md), and [AGENTS.md](../AGENTS.md).
 
@@ -108,8 +108,8 @@ Agents register by name with tasks and write-tasks. Placeholders:
 
 | Agent | Tasks | Result today |
 | --- | --- | --- |
-| `forecast` | `forecast`, `get_stock` | not implemented yet |
-| `exception_monitor` | `scan` | not implemented yet |
+| `forecast` | `forecast`, `get_stock` | Tools: `get_history`, `run_forecast`, `get_forecast_accuracy`, `get_forecast`, `get_stock`. Typed eval (trend, chosen model, WAPE vs naive, confidence, caveats). LLM writes a one-line interpretation grounded in those fields. Read-only. |
+| `exception_monitor` | `scan` | Detectors in code. LLM ranks playbook actions only. Writes `exceptions` and `agent_suggestions`. Orchestrator task is still read-only so `/scan` does not pause. |
 | `replenishment` | `recommend`, `draft_po` | not implemented yet |
 | `supplier_comm` | `draft_emails` | not implemented yet |
 | `explainer` | `explain` | not implemented yet |
@@ -125,6 +125,7 @@ All routes are under `/api/v1` and require a JWT. Runs are scoped to `business_i
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `POST` | `/chat/runs` | Start a run from `{ "message": "..." }` |
+| `GET` | `/chat/runs/{id}` | Run status, plan, and stored events for the timeline |
 | `GET` | `/chat/runs/{id}/events` | SSE event stream |
 | `POST` | `/chat/runs/{id}/cancel` | Cancel a running or paused run |
 | `POST` | `/chat/runs/{id}/resume` | `{ "action": "run" \| "edit" \| "cancel", "plan": optional }` |
@@ -171,9 +172,33 @@ The summary LLM sees those typed objects inside `<<DATA>>` blocks. If it invents
 
 - LangGraph is used only for this orchestrator graph. No LangChain agents and no Langfuse.
 - Tests always use `LLM_PROVIDER=fake`. Live providers cannot be constructed under pytest.
-- Placeholder agents do not call inventory tools yet. The DAG, approval, SSE, cancel, and summary checks are the slice.
-- Write tools, when filled in later, still only insert `agent_suggestions`.
-- Chat has an API, not a frontend inbox or composer in this slice.
+- Placeholder agents except `forecast` and `exception_monitor` do not call inventory tools yet. The DAG, approval, SSE, cancel, and summary checks are in. `forecast` reads demand through service tools. `exception_monitor` runs detectors in code.
+- Write tools, when filled in later, still only insert `agent_suggestions`. The exception monitor also inserts `exceptions` rows through a service, never purchase orders or ledger rows.
+- Chat has an API and an Agent Inbox chat UI. The forecast agent and exception monitor are filled in. Other concrete agents are still placeholders.
+- Nightly scans: `POST /api/v1/jobs/exception-scan` (owner JWT or `X-Job-Secret`). Optional in-process scheduler when `EXCEPTION_SCAN_SCHEDULER_ENABLED=true`. Owners set `exception_scan_enabled` and `exception_scan_hour_utc` on autonomy rules. Default hour is 02:00 UTC. The scheduler is off in pytest.
+
+### Forecast agent (numbers from code)
+
+Tools: `get_forecast`, `run_forecast`, `get_history`, `get_forecast_accuracy`. Insights `get_forecast` is unchanged (seasonal naive / daily average / no sales). `run_forecast` backtests the last 7 days and picks the lower WAPE of `daily_average` vs `seasonal_naive`, compared with a last-value naive baseline.
+
+Typed per-SKU fields: forecast summary, trend (`up`/`down`/`flat` at ±10% last 7 vs prior 7), chosen model, backtest WAPE, naive WAPE, confidence, caveats (`low_history` if span < 14 days, `intermittent_demand` if ≥60% zero days with some sales). The LLM may write one grounded sentence. Invented numbers are replaced with a template.
+
+### Exception monitor (detection from code)
+
+Pure detectors in `app/services/detectors.py`:
+
+| Detector | Fires when | Severity notes |
+| --- | --- | --- |
+| `stockout_risk` | days of cover (`on_hand / daily_demand`) < lead time (preferred supplier, else 7) | high if cover < 0.5×lead; critical if on-hand is 0 with demand |
+| `overstock` | days of cover > 90 | high if > 180. No demand → no overstock |
+| `demand_spike` | last 7 / prior 7 > 1.5 or robust z > 2.5 | |
+| `demand_drop` | ratio < 0.5 or z < -2.5 | Quiet SKUs (0 vs 0) do not fire |
+| `supplier_delay` | PO `approved`/`sent` with `expected_on` before today; or reliability_score < 0.7 and overdue_count ≥ 2 | |
+| `data_anomaly` | negative on-hand; duplicate sales (same product/location/minute/qty); \|adjustment\| > max(100, 3×14-day forecast) | |
+
+Dedupe key is stable (`{type}:{entity_id}` or a more specific anomaly key). An open row is updated, not re-inserted.
+
+Playbooks in `app/agents/playbooks.py` list ordered actions (`reorder_now`, `expedite`, `alternate_supplier`, `transfer_stock`, `count_stock`, `ignore`) with preconditions in code. The LLM may only pick from that list; anything else is clipped to the first valid action. Approval-needed actions become `agent_suggestions`.
 - Plan approval is plan-level, not per step. Independent reads still run after one Run click.
 - Tenant ids come from the JWT. The model cannot choose `business_id`.
-- SQLite and PostgreSQL share `agent_runs` extras and `chat_messages`. LangGraph does not own extra tables.
+- SQLite and PostgreSQL share `agent_runs` extras, `chat_messages`, and `exceptions`. LangGraph does not own extra tables.

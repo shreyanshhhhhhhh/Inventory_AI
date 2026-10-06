@@ -135,3 +135,37 @@
     @apply font-sans;
   }
 }
+
+@keyframes chat-cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes chat-think {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.chat-cursor::after {
+  content: "";
+  display: inline-block;
+  width: 0.45ch;
+  height: 1em;
+  margin-left: 2px;
+  background: currentColor;
+  vertical-align: text-bottom;
+  animation: chat-cursor-blink 1s step-end infinite;
+}
+
+.chat-think-dot {
+  animation: chat-think 1s ease-in-out infinite;
+}

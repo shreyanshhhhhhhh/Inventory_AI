@@ -23,3 +23,9 @@ prompts:
   orchestrator_summary:
     file: v1/orchestrator_summary.prompt.md
     version: "1"
+  forecast_interpret:
+    file: v1/forecast_interpret.prompt.md
+    version: "1"
+  exception_rank:
+    file: v1/exception_rank.prompt.md
+    version: "1"

@@ -286,6 +286,9 @@ export type ApiTeamUser = {
 
 export type ApiAutonomyRules = {
   auto_approve_below_amount: string | null;
+  exception_scan_enabled: boolean;
+  exception_scan_hour_utc: number;
+  exception_scan_last_run_on: string | null;
 };
 
 export type ApiDemoSeedResult = {

@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, replace
 
+from typing import TypeVar
+
 from pydantic import BaseModel
 
 from app.agents.context import AgentContext
@@ -11,6 +13,8 @@ from app.llm.gateway import CompletionResult, LLMGateway
 from app.llm.prompts.registry import get_prompt
 from app.llm.providers.base import ChatMessage
 from app.models import AgentRun
+
+T = TypeVar("T", bound=BaseModel)
 
 
 @dataclass
@@ -34,6 +38,13 @@ class BaseAgent(ABC):
         self._step_ids: list[str] = []
         self._context: AgentContext | None = None
         self._run: AgentRun | None = None
+
+    def attach(self, context: AgentContext) -> None:
+        """Bind an existing run (the chat orchestrator) without opening a nested AgentRun."""
+        self._tool_calls = 0
+        self._step_ids = []
+        self._context = context
+        self._run = None
 
     def run(self, task: str, context: AgentContext) -> AgentResult:
         self._tool_calls = 0
@@ -90,6 +101,24 @@ class BaseAgent(ABC):
         if result.step_id:
             self._step_ids.append(result.step_id)
         return result
+
+    def call_llm_structured(
+        self,
+        messages: list[ChatMessage],
+        model: type[T],
+        *,
+        prompt_name: str | None = None,
+    ) -> T:
+        context = self._require_context()
+        if self._gateway is None:
+            self._gateway = LLMGateway(context.session)
+        return self._gateway.complete_structured(
+            messages,
+            model,
+            prompt_name=prompt_name or self.prompt_name,
+            business_id=context.business_id,
+            run_id=context.run_id,
+        )
 
     def _require_context(self) -> AgentContext:
         if self._context is None:

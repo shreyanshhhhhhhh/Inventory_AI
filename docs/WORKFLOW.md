@@ -25,10 +25,10 @@ CSV header: `sku`, `name`, `category`, `location`, `quantity`, `unit`, `reorder_
 | Catalog | Categories, products, archive, supplier links (cost, lead time, preferred flag). |
 | Inventory | On-hand by location, post a sale, adjustment, or transfer, movement history. |
 | Orders & Suppliers | Suppliers and purchase orders: draft, approved, sent, received, or cancelled. |
-| Agent Inbox | Placeholder. Empty state says it is not in this version. No API calls to a model. |
+| Agent Inbox | Chat with the orchestrator over SSE. Slash commands and free text, including compound requests. Write plans wait for Run / Edit / Cancel. Draft POs and emails appear as cards and on Approvals. |
 | Insights | Demand forecast per SKU for the next 14 days, from `sale` movements, plus movement and top-seller charts. Forecasting does not create a purchase order. |
 | Accounts (lite) | Profile, password change, and the team list. This is not a general ledger. |
-| Settings | Business name and locations. Currency is shown and not editable. |
+| Settings | Business name and locations. Currency is shown and not editable. Owners also set the nightly exception scan hour. |
 
 Desktop uses a sidebar. Narrow screens use the same sections in a nav drawer.
 
@@ -53,7 +53,7 @@ Inventory value on Home is on-hand times the preferred supplier `unit_cost`. If 
 
 ## Chat orchestrator
 
-Backend only in this slice. `POST /api/v1/chat/runs` accepts slash commands and free text, including compound requests. Write plans wait for approval. Events stream over SSE. See [ORCHESTRATOR.md](ORCHESTRATOR.md). Agent Inbox in the UI is still a placeholder.
+`POST /api/v1/chat/runs` accepts slash commands and free text, including compound requests. The Agent Inbox chat UI streams SSE events, shows a thinking bubble then a plan checklist, and hydrates the agent timeline from `GET /api/v1/chat/runs/{id}`. `/stock` and `/forecast` return live stock tables and demand charts from the forecast agent. `/scan` runs detectors in code and lists findings with playbook actions. Write plans wait for Run / Edit / Cancel. Draft POs and emails appear as cards, on Approvals, and in the Home pending count. See [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
 ## Future daily agent workflow
 

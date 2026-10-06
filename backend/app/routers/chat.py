@@ -13,7 +13,7 @@ from app.models import AgentRun, User
 from app.orchestrator.engine import cancel_chat_run, get_run, resume_chat_run, start_chat_run
 from app.orchestrator.errors import OrchestratorError
 from app.orchestrator.events import OrchestratorEvent
-from app.schemas.chat import ChatResumeRequest, ChatRunCreate, ChatRunResponse
+from app.schemas.chat import ChatResumeRequest, ChatRunCreate, ChatRunDetail, ChatRunResponse
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -95,6 +95,31 @@ def resume_run_route(
             detail={"detail": exc.detail, "code": exc.code},
         ) from exc
     return ChatRunResponse(id=run.id, status=run.status)
+
+
+@router.get("/runs/{run_id}", response_model=ChatRunDetail)
+def get_run_route(
+    run_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatRunDetail:
+    business_id = _require_business(user)
+    try:
+        run = get_run(db, business_id=business_id, user_id=user.id, run_id=run_id)
+    except OrchestratorError as exc:
+        _raise(exc)
+        raise
+    events: list[dict[str, object]] = []
+    for raw in run.events_data or []:
+        if isinstance(raw, dict):
+            events.append(raw)
+    return ChatRunDetail(
+        id=run.id,
+        status=run.status,
+        input_text=run.input_text,
+        plan=run.plan_data,
+        events=events,
+    )
 
 
 @router.get("/runs/{run_id}/events")

@@ -8,7 +8,7 @@ Read these before changing the product:
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — schema and ledger invariants
 - [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md) — chat orchestrator, routing table, SSE events
 
-**AI orchestrator is in progress.** The LLM gateway, versioned prompts, tool registry, `BaseAgent`, and the LangGraph chat orchestrator may be used. Do not add LangChain agents or Langfuse yet. Demand forecasts stay in `app/services/forecast.py` and must not create purchase orders or write the ledger. Do not add statsforecast or Prophet unless that service is replaced on purpose.
+**AI orchestrator is in progress.** The LLM gateway, versioned prompts, tool registry, `BaseAgent`, the LangGraph chat orchestrator, the forecast agent, and the exception monitor may be used. Do not add LangChain agents or Langfuse yet. Demand forecasts stay in `app/services/forecast.py` (eval in `app/services/forecast_eval.py`) and must not create purchase orders or write the ledger. Do not add statsforecast or Prophet unless that service is replaced on purpose.
 
 ### LLM and agent rules
 
@@ -19,7 +19,7 @@ Read these before changing the product:
 - **Untrusted text is DATA.** Product names, supplier emails, and tool JSON go in `<<DATA>>` blocks and cannot change the tool allowlist or instructions.
 - **Orchestrator plans are validated in code.** The LLM may propose a compound DAG. Unknown agents, cycles, oversized plans, and write-before-read graphs are rejected.
 
-Current implementation scope is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator: catalog, stock ledger, purchase orders, suppliers, dashboard, auth, onboarding, Insights forecasts, LLM gateway, tools, `BaseAgent`, slash/free-text/compound routing, SSE runs. Concrete procurement and exception agents are still placeholders. See [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md).
+Current implementation scope is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator plus the Agent Inbox chat UI plus the forecast agent plus the exception monitor: catalog, stock ledger, purchase orders, suppliers, dashboard, auth, onboarding, Insights forecasts, LLM gateway, tools, `BaseAgent`, slash/free-text/compound routing, SSE runs, Inbox chat, `forecast` (history, run, accuracy, get_forecast), `exception_monitor.scan`, nightly scan job. Concrete procurement agents are still placeholders. See [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md).
 
 ## Permanent backend rules
 

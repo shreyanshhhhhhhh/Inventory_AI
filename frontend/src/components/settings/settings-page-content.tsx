@@ -43,6 +43,8 @@ export function SettingsPageContent() {
     locations,
     teamUsers,
     autoApproveBelow,
+    exceptionScanEnabled,
+    exceptionScanHourUtc,
     isLoading,
     error,
     saveBusinessProfile,
@@ -64,12 +66,16 @@ export function SettingsPageContent() {
   const [staffEmail, setStaffEmail] = useState("");
   const [staffPassword, setStaffPassword] = useState("");
   const [autoApproveInput, setAutoApproveInput] = useState(autoApproveBelow);
+  const [scanEnabled, setScanEnabled] = useState(exceptionScanEnabled);
+  const [scanHour, setScanHour] = useState(String(exceptionScanHourUtc));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setNameInput(businessName);
     setCurrencyInput(currencyCode);
     setAutoApproveInput(autoApproveBelow);
+    setScanEnabled(exceptionScanEnabled);
+    setScanHour(String(exceptionScanHourUtc));
     setLocationDrafts(
       Object.fromEntries(
         locations.map((location) => [
@@ -78,7 +84,7 @@ export function SettingsPageContent() {
         ]),
       ),
     );
-  }, [businessName, currencyCode, autoApproveBelow, locations]);
+  }, [businessName, currencyCode, autoApproveBelow, exceptionScanEnabled, exceptionScanHourUtc, locations]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -97,9 +103,11 @@ export function SettingsPageContent() {
           });
         }),
       );
-      await saveAutonomyRules(
-        autoApproveInput.trim() === "" ? null : autoApproveInput.trim(),
-      );
+      await saveAutonomyRules({
+        autoApproveBelow: autoApproveInput.trim() === "" ? null : autoApproveInput.trim(),
+        exceptionScanEnabled: scanEnabled,
+        exceptionScanHourUtc: Number(scanHour),
+      });
       toast.success("Settings saved");
     } catch (err) {
       showApiErrorToast(err);
@@ -355,6 +363,28 @@ export function SettingsPageContent() {
               />
               <p className="text-xs text-muted-foreground">
                 Purchase orders below this amount could be auto-approved by an agent later.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="exception-scan">Nightly exception scan</Label>
+              <label className="flex items-center gap-2 text-sm" htmlFor="exception-scan">
+                <input
+                  id="exception-scan"
+                  type="checkbox"
+                  checked={scanEnabled}
+                  onChange={(event) => setScanEnabled(event.target.checked)}
+                />
+                Run the exception monitor on a schedule
+              </label>
+              <Label htmlFor="scan-hour">Scan hour (UTC)</Label>
+              <Input
+                id="scan-hour"
+                inputMode="numeric"
+                value={scanHour}
+                onChange={(event) => setScanHour(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Owners can also POST /api/v1/jobs/exception-scan, or a cron job can call it with X-Job-Secret.
               </p>
             </div>
           </CardContent>

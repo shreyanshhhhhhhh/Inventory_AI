@@ -69,9 +69,12 @@ def template_summary(results: dict[str, TypedResult]) -> str:
     failed = sum(1 for item in results.values() if item.status == "failed")
     skipped = sum(1 for item in results.values() if item.status == "skipped")
     total = len(results)
+    extra = ""
+    if any(item.status == "not_implemented" for item in results.values()):
+        extra = " Placeholder agents have not been filled in yet."
     return (
-        f"Finished {total} steps: {ok} succeeded, {failed} failed, {skipped} skipped. "
-        "Placeholder agents have not been filled in yet."
+        f"Finished {total} steps: {ok} succeeded, {failed} failed, {skipped} skipped."
+        f"{extra}"
     )
 
 

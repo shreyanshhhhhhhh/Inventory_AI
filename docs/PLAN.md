@@ -4,7 +4,7 @@ Inventory management for a small retailer (about 50–500 SKUs). The owner shoul
 
 Later phases add the differentiator: agentic AI. Agents turn forecasts into actions, handle exceptions, and explain every decision. Those phases are not this project yet.
 
-**Current work is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator.** Concrete procurement and exception agents are still placeholders. There are no live LLM calls in tests. Forecasts are computed from sales history and do not create purchase orders. Agent tools only write `agent_suggestions`. Orchestrator details live in [ORCHESTRATOR.md](ORCHESTRATOR.md).
+**Current work is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator plus the Agent Inbox chat UI plus the forecast agent plus the exception monitor.** Procurement agents are still placeholders. There are no live LLM calls in tests. Forecasts are computed from sales history and do not create purchase orders. Agent write tools only write `agent_suggestions`. Exception findings persist to `exceptions`. Orchestrator details live in [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
 Design lives in [ARCHITECTURE.md](ARCHITECTURE.md), [WORKFLOW.md](WORKFLOW.md), [DATA_MODEL.md](DATA_MODEL.md), and [ORCHESTRATOR.md](ORCHESTRATOR.md). Coding agents follow [AGENTS.md](../AGENTS.md).
 
@@ -62,14 +62,14 @@ No mobile app, barcode hardware, accounting or general ledger, multi-currency, m
 ### P3 — Tool layer, procurement agent, approval inbox
 
 - **Goal:** An agent proposes purchase orders; a person approves them before they exist as orders.
-- **Deliverables:** Phase 1 service functions registered as tools, the LangGraph chat orchestrator, placeholder agents, Agent Inbox (approve / reject) still later.
+- **Deliverables:** Phase 1 service functions registered as tools, the LangGraph chat orchestrator, placeholder agents, Agent Inbox chat (SSE, plan approval, suggestion cards). Filled-in procurement and exception agents are still later.
 - **Why it matters:** First closed loop from forecast to action, with a human gate.
 - **Done when:** A proposal shows up in the inbox, approval calls the same purchase-order service a person uses, and both the proposal and the decision are in `audit_log`.
 
 ### P4 — Exception handling
 
 - **Goal:** Stock and order problems surface as inbox work, not silent drift.
-- **Deliverables:** Exception detection (stockout risk, overdue purchase order, receive mismatch) and agent-suggested next steps in the inbox.
+- **Deliverables:** Exception detection (stockout risk, overstock, demand spike/drop, supplier delay, data anomaly) and agent-suggested next steps in the inbox. Nightly scan job.
 - **Why it matters:** The daily value of agents is catching what the owner will not scan by hand.
 - **Done when:** A seeded exception creates an inbox item with a recommended action, and approve / dismiss writes an audit row.
 

@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -337,6 +338,9 @@ class AutonomyRules(IdMixin, TimestampMixin, Base):
         nullable=False,
     )
     auto_approve_below_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    exception_scan_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    exception_scan_hour_utc: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    exception_scan_last_run_on: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class AuditLog(IdMixin, Base):
@@ -458,6 +462,60 @@ class AgentSuggestion(IdMixin, Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class InventoryException(IdMixin, TimestampMixin, Base):
+    __tablename__ = "exceptions"
+    __table_args__ = (
+        CheckConstraint(
+            "exception_type IN ('stockout_risk', 'overstock', 'demand_spike', "
+            "'demand_drop', 'supplier_delay', 'data_anomaly')",
+            name="exception_type_known",
+        ),
+        CheckConstraint(
+            "severity IN ('low', 'medium', 'high', 'critical')",
+            name="exception_severity_known",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'resolved', 'ignored')",
+            name="exception_status_known",
+        ),
+        Index("ix_exceptions_business_id", "business_id"),
+        Index(
+            "uq_exceptions_open_dedupe",
+            "business_id",
+            "dedupe_key",
+            unique=True,
+            sqlite_where=text("status = 'open'"),
+            postgresql_where=text("status = 'open'"),
+        ),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    exception_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[str] = mapped_column(CHAR(36), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    evidence: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    recommended_action: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suggestion_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_suggestions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    run_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
 
 
 class ConversationMessage(IdMixin, Base):

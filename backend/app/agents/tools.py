@@ -15,10 +15,12 @@ from app.core.jsonutil import jsonable
 from app.models import AgentStep
 from app.models.types import new_id
 from app.services import agent_suggestions as suggestion_service
+from app.services import exception_scan as exception_scan_service
 from app.services import replenishment as replenishment_service
 from app.services import supplier_reliability as reliability_service
 from app.services.dashboard import get_needs_attention
-from app.services.forecast import get_forecast, list_forecasts
+from app.services.forecast import ForecastError, get_forecast, get_history, list_forecasts
+from app.services.forecast_eval import get_forecast_accuracy, run_forecast
 from app.services.inventory import get_stock_levels
 
 
@@ -75,6 +77,11 @@ class GetForecastInput(ToolInputModel):
     product_id: str | None = None
 
 
+class ForecastPoint(BaseModel):
+    date: str
+    units: Decimal
+
+
 class ForecastItem(BaseModel):
     product_id: str
     sku: str
@@ -83,12 +90,88 @@ class ForecastItem(BaseModel):
     forecast_units: Decimal
     daily_average: Decimal
     method: str
+    forecast: list[ForecastPoint] = Field(default_factory=list)
 
 
 class GetForecastOutput(BaseModel):
     history_days: int
     horizon_days: int
     items: list[ForecastItem]
+
+
+class HistoryPoint(BaseModel):
+    date: str
+    units: Decimal
+
+
+class HistoryItem(BaseModel):
+    product_id: str
+    sku: str
+    product_name: str
+    history_units: Decimal
+    history: list[HistoryPoint] = Field(default_factory=list)
+
+
+class GetHistoryOutput(BaseModel):
+    history_days: int
+    items: list[HistoryItem]
+
+
+class RunForecastItem(BaseModel):
+    product_id: str
+    sku: str
+    product_name: str
+    history_units: Decimal
+    forecast_units: Decimal
+    daily_average: Decimal
+    horizon_days: int
+    trend: str
+    chosen_model: str
+    backtest_wape: Decimal | None = None
+    naive_wape: Decimal | None = None
+    confidence: str
+    caveats: list[str] = Field(default_factory=list)
+    history_span_days: int
+    forecast: list[ForecastPoint] = Field(default_factory=list)
+
+
+class RunForecastOutput(BaseModel):
+    history_days: int
+    horizon_days: int
+    items: list[RunForecastItem]
+
+
+class ForecastAccuracyItem(BaseModel):
+    product_id: str
+    sku: str
+    product_name: str
+    chosen_model: str
+    backtest_wape: Decimal | None = None
+    naive_wape: Decimal | None = None
+    confidence: str
+    caveats: list[str] = Field(default_factory=list)
+
+
+class GetForecastAccuracyOutput(BaseModel):
+    items: list[ForecastAccuracyItem]
+
+
+class ScanDetectorsOutput(BaseModel):
+    items: list[dict[str, Any]]
+
+
+class RankedExceptionAction(ToolInputModel):
+    dedupe_key: str
+    action: str
+    rationale: str = "Playbook default."
+
+
+class RecordExceptionActionsInput(ToolInputModel):
+    rankings: list[RankedExceptionAction] = Field(default_factory=list)
+
+
+class RecordExceptionActionsOutput(BaseModel):
+    items: list[dict[str, Any]]
 
 
 class LowStockItem(BaseModel):
@@ -186,42 +269,190 @@ def _handle_get_stock(ctx: AgentContext, payload: BaseModel) -> GetStockOutput:
     return GetStockOutput(items=[StockItem.model_validate(item) for item in items], total=total)
 
 
+def _forecast_item_from_raw(raw: dict[str, object]) -> ForecastItem:
+    series = raw.get("forecast")
+    points: list[ForecastPoint] = []
+    if isinstance(series, list):
+        for point in series:
+            if not isinstance(point, dict):
+                continue
+            day = point.get("date")
+            units = point.get("units")
+            if day is None or units is None:
+                continue
+            points.append(ForecastPoint(date=str(day), units=Decimal(str(units))))
+    return ForecastItem(
+        product_id=str(raw["product_id"]),
+        sku=str(raw["sku"]),
+        product_name=str(raw["product_name"]),
+        history_units=Decimal(str(raw["history_units"])),
+        forecast_units=Decimal(str(raw["forecast_units"])),
+        daily_average=Decimal(str(raw["daily_average"])),
+        method=str(raw["method"]),
+        forecast=points,
+    )
+
+
 def _handle_get_forecast(ctx: AgentContext, payload: BaseModel) -> GetForecastOutput:
     data = GetForecastInput.model_validate(payload.model_dump())
     if data.product_id:
-        raw = get_forecast(ctx.session, business_id=ctx.business_id, product_id=data.product_id)
-        item = ForecastItem(
-            product_id=str(raw["product_id"]),
-            sku=str(raw["sku"]),
-            product_name=str(raw["product_name"]),
-            history_units=Decimal(str(raw["history_units"])),
-            forecast_units=Decimal(str(raw["forecast_units"])),
-            daily_average=Decimal(str(raw["daily_average"])),
-            method=str(raw["method"]),
-        )
+        try:
+            raw = get_forecast(ctx.session, business_id=ctx.business_id, product_id=data.product_id)
+        except ForecastError as exc:
+            raise AgentError(exc.message, code=exc.code, status_code=exc.status_code) from exc
         return GetForecastOutput(
             history_days=int(raw["history_days"]),
             horizon_days=int(raw["horizon_days"]),
-            items=[item],
+            items=[_forecast_item_from_raw(raw)],
         )
-    raw = list_forecasts(ctx.session, business_id=ctx.business_id)
-    items = [
-        ForecastItem(
-            product_id=str(item["product_id"]),
-            sku=str(item["sku"]),
-            product_name=str(item["product_name"]),
-            history_units=Decimal(str(item["history_units"])),
-            forecast_units=Decimal(str(item["forecast_units"])),
-            daily_average=Decimal(str(item["daily_average"])),
-            method=str(item["method"]),
-        )
-        for item in raw["items"]
-    ]
+    listed = list_forecasts(ctx.session, business_id=ctx.business_id)
+    raw_items = listed["items"]
+    series = raw_items if isinstance(raw_items, list) else []
+    items = [_forecast_item_from_raw(item) for item in series if isinstance(item, dict)]
     return GetForecastOutput(
+        history_days=int(listed["history_days"]),
+        horizon_days=int(listed["horizon_days"]),
+        items=items,
+    )
+
+
+def _history_item_from_raw(raw: dict[str, object]) -> HistoryItem:
+    series = raw.get("history")
+    points: list[HistoryPoint] = []
+    if isinstance(series, list):
+        for point in series:
+            if not isinstance(point, dict):
+                continue
+            day = point.get("date")
+            units = point.get("units")
+            if day is None or units is None:
+                continue
+            points.append(HistoryPoint(date=str(day), units=Decimal(str(units))))
+    return HistoryItem(
+        product_id=str(raw["product_id"]),
+        sku=str(raw["sku"]),
+        product_name=str(raw["product_name"]),
+        history_units=Decimal(str(raw["history_units"])),
+        history=points,
+    )
+
+
+def _handle_get_history(ctx: AgentContext, payload: BaseModel) -> GetHistoryOutput:
+    data = GetForecastInput.model_validate(payload.model_dump())
+    try:
+        raw = get_history(ctx.session, business_id=ctx.business_id, product_id=data.product_id)
+    except ForecastError as exc:
+        raise AgentError(exc.message, code=exc.code, status_code=exc.status_code) from exc
+    raw_items = raw.get("items")
+    series = raw_items if isinstance(raw_items, list) else []
+    items = [_history_item_from_raw(item) for item in series if isinstance(item, dict)]
+    return GetHistoryOutput(history_days=int(raw["history_days"]), items=items)
+
+
+def _run_forecast_item_from_raw(raw: dict[str, object]) -> RunForecastItem:
+    series = raw.get("forecast")
+    points: list[ForecastPoint] = []
+    if isinstance(series, list):
+        for point in series:
+            if not isinstance(point, dict):
+                continue
+            day = point.get("date")
+            units = point.get("units")
+            if day is None or units is None:
+                continue
+            points.append(ForecastPoint(date=str(day), units=Decimal(str(units))))
+    caveats_raw = raw.get("caveats")
+    caveats = [str(item) for item in caveats_raw] if isinstance(caveats_raw, list) else []
+    wape = raw.get("backtest_wape")
+    naive = raw.get("naive_wape")
+    return RunForecastItem(
+        product_id=str(raw["product_id"]),
+        sku=str(raw["sku"]),
+        product_name=str(raw["product_name"]),
+        history_units=Decimal(str(raw["history_units"])),
+        forecast_units=Decimal(str(raw["forecast_units"])),
+        daily_average=Decimal(str(raw["daily_average"])),
+        horizon_days=int(raw["horizon_days"]),
+        trend=str(raw["trend"]),
+        chosen_model=str(raw["chosen_model"]),
+        backtest_wape=Decimal(str(wape)) if wape is not None else None,
+        naive_wape=Decimal(str(naive)) if naive is not None else None,
+        confidence=str(raw["confidence"]),
+        caveats=caveats,
+        history_span_days=int(raw["history_span_days"]),
+        forecast=points,
+    )
+
+
+def _handle_run_forecast(ctx: AgentContext, payload: BaseModel) -> RunForecastOutput:
+    data = GetForecastInput.model_validate(payload.model_dump())
+    try:
+        raw = run_forecast(ctx.session, business_id=ctx.business_id, product_id=data.product_id)
+    except ForecastError as exc:
+        raise AgentError(exc.message, code=exc.code, status_code=exc.status_code) from exc
+    raw_items = raw.get("items")
+    series = raw_items if isinstance(raw_items, list) else []
+    items = [_run_forecast_item_from_raw(item) for item in series if isinstance(item, dict)]
+    return RunForecastOutput(
         history_days=int(raw["history_days"]),
         horizon_days=int(raw["horizon_days"]),
         items=items,
     )
+
+
+def _handle_get_forecast_accuracy(ctx: AgentContext, payload: BaseModel) -> GetForecastAccuracyOutput:
+    data = GetForecastInput.model_validate(payload.model_dump())
+    try:
+        raw = get_forecast_accuracy(
+            ctx.session,
+            business_id=ctx.business_id,
+            product_id=data.product_id,
+        )
+    except ForecastError as exc:
+        raise AgentError(exc.message, code=exc.code, status_code=exc.status_code) from exc
+    items: list[ForecastAccuracyItem] = []
+    for item in raw.get("items") or []:
+        if not isinstance(item, dict):
+            continue
+        wape = item.get("backtest_wape")
+        naive = item.get("naive_wape")
+        caveats_raw = item.get("caveats")
+        items.append(
+            ForecastAccuracyItem(
+                product_id=str(item["product_id"]),
+                sku=str(item["sku"]),
+                product_name=str(item["product_name"]),
+                chosen_model=str(item["chosen_model"]),
+                backtest_wape=Decimal(str(wape)) if wape is not None else None,
+                naive_wape=Decimal(str(naive)) if naive is not None else None,
+                confidence=str(item["confidence"]),
+                caveats=[str(caveat) for caveat in caveats_raw] if isinstance(caveats_raw, list) else [],
+            )
+        )
+    return GetForecastAccuracyOutput(items=items)
+
+
+def _handle_scan_detectors(ctx: AgentContext, payload: BaseModel) -> ScanDetectorsOutput:
+    del payload
+    items = exception_scan_service.detect_for_business(ctx.session, business_id=ctx.business_id)
+    return ScanDetectorsOutput(items=items)
+
+
+def _handle_record_exception_actions(
+    ctx: AgentContext,
+    payload: BaseModel,
+) -> RecordExceptionActionsOutput:
+    data = RecordExceptionActionsInput.model_validate(payload.model_dump())
+    if ctx.run_id is None:
+        raise AgentError("Tools require an agent run.", code="missing_run")
+    items = exception_scan_service.persist_ranked_findings(
+        ctx.session,
+        business_id=ctx.business_id,
+        actor_user_id=ctx.user_id,
+        run_id=ctx.run_id,
+        rankings=[item.model_dump() for item in data.rankings],
+    )
+    return RecordExceptionActionsOutput(items=items)
 
 
 def _handle_list_low_stock(ctx: AgentContext, payload: BaseModel) -> ListLowStockOutput:
@@ -311,6 +542,51 @@ TOOLS: dict[str, ToolSpec] = {
         input_model=GetForecastInput,
         output_model=GetForecastOutput,
         handler=_handle_get_forecast,
+    ),
+    "get_history": ToolSpec(
+        name="get_history",
+        description="Daily sale demand history. Optional product_id.",
+        read=True,
+        required_role=None,
+        input_model=GetForecastInput,
+        output_model=GetHistoryOutput,
+        handler=_handle_get_history,
+    ),
+    "run_forecast": ToolSpec(
+        name="run_forecast",
+        description="Backtest demand models and project the horizon. Optional product_id.",
+        read=True,
+        required_role=None,
+        input_model=GetForecastInput,
+        output_model=RunForecastOutput,
+        handler=_handle_run_forecast,
+    ),
+    "get_forecast_accuracy": ToolSpec(
+        name="get_forecast_accuracy",
+        description="Backtest WAPE versus a last-value naive baseline.",
+        read=True,
+        required_role=None,
+        input_model=GetForecastInput,
+        output_model=GetForecastAccuracyOutput,
+        handler=_handle_get_forecast_accuracy,
+    ),
+    "scan_detectors": ToolSpec(
+        name="scan_detectors",
+        description="Run deterministic exception detectors. Does not write.",
+        read=True,
+        required_role=None,
+        input_model=EmptyInput,
+        output_model=ScanDetectorsOutput,
+        handler=_handle_scan_detectors,
+    ),
+    "record_exception_actions": ToolSpec(
+        name="record_exception_actions",
+        description="Store exception findings and playbook suggestions. Does not change stock or orders.",
+        read=False,
+        required_role=None,
+        input_model=RecordExceptionActionsInput,
+        output_model=RecordExceptionActionsOutput,
+        handler=_handle_record_exception_actions,
     ),
     "list_low_stock": ToolSpec(
         name="list_low_stock",

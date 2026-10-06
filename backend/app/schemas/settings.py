@@ -1,3 +1,4 @@
+from datetime import date
 from decimal import Decimal
 from typing import Literal
 
@@ -101,6 +102,9 @@ class UpdateUserRoleRequest(BaseModel):
 
 class AutonomyRulesResponse(BaseModel):
     auto_approve_below_amount: Decimal | None
+    exception_scan_enabled: bool = True
+    exception_scan_hour_utc: int = 2
+    exception_scan_last_run_on: date | None = None
 
     @field_serializer("auto_approve_below_amount")
     def serialize_amount(self, value: Decimal | None) -> str | None:
@@ -109,3 +113,5 @@ class AutonomyRulesResponse(BaseModel):
 
 class AutonomyRulesUpdateRequest(BaseModel):
     auto_approve_below_amount: Decimal | None = None
+    exception_scan_enabled: bool | None = None
+    exception_scan_hour_utc: int | None = Field(default=None, ge=0, le=23)

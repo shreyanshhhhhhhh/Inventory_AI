@@ -60,7 +60,7 @@ flowchart TB
 | Models | One SQLAlchemy mapping shared by SQLite and PostgreSQL. |
 | Alembic | Migrations for both databases. No database-specific types. |
 
-Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 adds the LLM gateway, prompts, tools, `BaseAgent`, and the chat orchestrator. Inbox UI and filled-in procurement agents are later.
+Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 adds the LLM gateway, prompts, tools, `BaseAgent`, the chat orchestrator, the Agent Inbox chat UI, the forecast agent, and the exception monitor. Filled-in procurement agents are later.
 
 ## LLM layer
 
@@ -115,7 +115,7 @@ The purchase-order service does not update a stored on-hand balance. Received qu
 | Forecast | Weekly seasonal naive (or a short-history daily average), computed in the forecast service. Not statsforecast or Prophet. |
 | LLM | Gateway in `app/llm/`. Default and CI provider is `fake`. Live: Gemini, Groq, or Ollama over HTTP. |
 | Orchestrator | LangGraph in `app/orchestrator/`. Chat runs under `/api/v1/chat`. |
-| Later | Langfuse, filled-in procurement and exception agents |
+| Later | Langfuse, filled-in procurement agents |
 
 Auth details:
 
