@@ -362,3 +362,116 @@ class AuditLog(IdMixin, Base):
     before_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     after_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class AgentRun(IdMixin, Base):
+    __tablename__ = "agent_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'completed', 'failed')",
+            name="agent_run_status_known",
+        ),
+        Index("ix_agent_runs_business_id", "business_id"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    agent_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    prompt_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    actor_user_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    started_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AgentStep(IdMixin, Base):
+    __tablename__ = "agent_steps"
+    __table_args__ = (
+        CheckConstraint("step_kind IN ('llm', 'tool')", name="agent_step_kind_known"),
+        Index("ix_agent_steps_run_id", "run_id"),
+        Index("ix_agent_steps_business_id", "business_id"),
+    )
+
+    run_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    step_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    tool_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    input_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    output_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class AgentSuggestion(IdMixin, Base):
+    __tablename__ = "agent_suggestions"
+    __table_args__ = (
+        CheckConstraint(
+            "suggestion_type IN ('generic', 'draft_po', 'draft_email')",
+            name="agent_suggestion_type_known",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'dismissed')",
+            name="agent_suggestion_status_known",
+        ),
+        Index("ix_agent_suggestions_business_id", "business_id"),
+        Index("ix_agent_suggestions_run_id", "run_id"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    run_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    suggestion_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class LlmUsageCounter(IdMixin, Base):
+    __tablename__ = "llm_usage_counters"
+    __table_args__ = (
+        UniqueConstraint("business_id", "usage_date", name="uq_llm_usage_business_id_usage_date"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    usage_date: Mapped[date] = mapped_column(Date, nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime,
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )

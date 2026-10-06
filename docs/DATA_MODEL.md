@@ -1,6 +1,6 @@
 # Data model
 
-Phase 1 schema only. No forecast tables, no LangGraph checkpoint tables, no inbox tables.
+Phase 1 schema, plus a computed Phase 2 demand forecast and the Phase 3 AI foundation tables (`agent_runs`, `agent_steps`, `agent_suggestions`, `llm_usage_counters`). No forecast table, no LangGraph checkpoint tables, and no inbox UI tables.
 
 **Multi-tenant assumption:** a user belongs to one business. Almost every row is scoped by `business_id`. The API takes `business_id` from the JWT, not from the client. Exception: `refresh_tokens` hang off `users`. Signup creates the business and the owner together, so `users.business_id` is set immediately. The column stays nullable. `onboarding_completed_at` stays null until the onboarding wizard, which is not part of signup.
 
@@ -36,6 +36,11 @@ erDiagram
   businesses ||--o{ audit_log : traces
   businesses ||--o| autonomy_rules : configures
   users |o--o{ audit_log : actor
+  businesses ||--o{ agent_runs : traces
+  users |o--o{ agent_runs : actor
+  agent_runs ||--o{ agent_steps : records
+  agent_runs ||--o{ agent_suggestions : proposes
+  businesses ||--o{ llm_usage_counters : budgets
 ```
 
 Signup sets `users.business_id` and `role` (`owner`) in the same transaction as the business. Currency on that business is `USD` until onboarding changes it. `onboarding_completed_at` stays null until that wizard finishes. The diagram shows the steady state.
@@ -65,6 +70,8 @@ Quantity is signed. Inbound is positive. Outbound is negative. `SUM` is the bala
 Received quantity on a purchase-order line is `SUM(quantity)` of `purchase_receipt` rows with that `purchase_order_item_id`. It is not stored on the line.
 
 Inventory value is that on-hand sum times the preferred `product_suppliers.unit_cost`. It is computed, not stored.
+
+Demand forecasts are computed the same way. For one SKU, history is the daily sum of `sale` quantities with the sign flipped, across every location. The forecast service projects the next 14 days from that series. Nothing is written back to the ledger or to a purchase order.
 
 `actor_type` on `audit_log` is the forward-looking hook. Phase 1 only writes `user`. A later phase may write `agent` and may add explanation storage. Do not add those tables now.
 
@@ -298,6 +305,73 @@ Insert-only. Who, what, when, before, after.
 | created_at | datetime | When |
 
 Written in the same transaction as the change. Phase 1 does not add `agent_run_id` or an explanation column.
+
+## agent_runs
+
+One row per agent execution. Insert-only except status, `finished_at`, and `error_message` when the run ends.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| agent_name | VARCHAR(80) | For example `echo`, later `replenishment` |
+| status | VARCHAR(20) | `running`, `completed`, `failed` |
+| prompt_name | VARCHAR(80) NULL | Primary prompt for the run, when known |
+| prompt_version | VARCHAR(32) NULL | Version from the prompt registry |
+| actor_user_id | CHAR(36) NULL | Who started the run. Null for a later scheduled job |
+| started_at | datetime | |
+| finished_at | datetime NULL | Set when the run ends |
+| error_message | TEXT NULL | Set on `failed` |
+
+## agent_steps
+
+Append-only. Every LLM call and every tool call.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| run_id | CHAR(36) | FK agent_runs |
+| business_id | CHAR(36) | FK |
+| step_kind | VARCHAR(20) | `llm` or `tool` |
+| tool_name | VARCHAR(80) NULL | Set on `tool` |
+| prompt_name | VARCHAR(80) NULL | Set on `llm` |
+| prompt_version | VARCHAR(32) NULL | Set on `llm` |
+| input_data | JSON NULL | Messages or tool arguments |
+| output_data | JSON NULL | Text, structured result, or tool output |
+| duration_ms | INTEGER | |
+| tokens_in | INTEGER NULL | LLM only |
+| tokens_out | INTEGER NULL | LLM only |
+| created_at | datetime | Insert time. No `updated_at` |
+
+## agent_suggestions
+
+The only write target for agent tools in this foundation. Tools never create purchase orders, send email, or post stock.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| run_id | CHAR(36) | FK agent_runs |
+| suggestion_type | VARCHAR(32) | `generic`, `draft_po`, `draft_email` |
+| status | VARCHAR(20) | `pending` on create. Later inbox phases may set `approved`, `rejected`, `dismissed` |
+| payload | JSON | Lines, supplier, email draft, or a free-form summary |
+| created_at | datetime | |
+
+## llm_usage_counters
+
+Per-business daily LLM budget. The window is the UTC calendar day.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| usage_date | DATE | UTC date |
+| request_count | INTEGER | Completed gateway calls that day |
+| token_count | INTEGER | Sum of tokens in plus tokens out |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+Unique `(business_id, usage_date)`.
 
 ## Tenant and delete rules
 

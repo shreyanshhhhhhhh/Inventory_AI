@@ -1,6 +1,6 @@
 # Architecture
 
-Phase 1 is a Next.js client and a FastAPI server. The browser never touches the database. Forecasting, LangGraph, and Langfuse are later phases and are not dependencies in Phase 1.
+Phase 1 is a Next.js client and a FastAPI server. The browser never touches the database. The demand forecast is computed in the API from sale history. The Phase 3 AI foundation adds an LLM gateway, versioned prompts, a tool registry, and `BaseAgent`. LangGraph and Langfuse are later phases and are not dependencies.
 
 See [PLAN.md](PLAN.md), [WORKFLOW.md](WORKFLOW.md), and [DATA_MODEL.md](DATA_MODEL.md).
 
@@ -27,15 +27,15 @@ flowchart TB
   Repos --> Models
   Models --> DB
 
-  subgraph later ["Later phases, not built in Phase 1"]
-    Forecast["Forecasting statsforecast or Prophet"]
-    Agents[LangGraph agents]
-    Traces[Langfuse]
+  subgraph later ["Phase 3 foundation"]
+    Gateway[LLM gateway]
+    Tools[Agent tools]
+    BaseAgent[BaseAgent]
   end
 
-  Forecast -.-> Services
-  Agents -.->|"same service functions as tools"| Services
-  Agents -.-> Traces
+  BaseAgent --> Gateway
+  BaseAgent --> Tools
+  Tools -->|"same service functions"| Services
 ```
 
 ## Components
@@ -48,11 +48,26 @@ flowchart TB
 | Services | All business rules, as plain functions. Phase 3 registers these as agent tools without rewriting them. |
 | Ledger service | The only writer of `stock_movements`. Insert only. |
 | Audit service | The only writer of `audit_log`. Called in the same transaction as the change it records. |
+| Forecast service | Reads `sale` movements and returns a 14-day demand forecast per SKU. Does not write stock or purchase orders. |
+| LLM gateway | Provider-agnostic `complete` / `complete_structured`. Providers: `fake`, `gemini`, `groq`, `ollama`. Daily UTC request and token budgets per business. Structured output uses JSON schema when the provider supports it, otherwise parse, validate, and retry up to twice. |
+| Prompt registry | Versioned files under `app/llm/prompts/`. Every LLM call records prompt name and version. |
+| Agent tools | Thin typed wrappers over services. Tenant-scoped via `AgentContext`. Write tools only create `agent_suggestions`. |
+| BaseAgent | Name, allowlist, max tool calls, `run(task, context)`. Concrete procurement agents are later. |
 | Repositories | Queries and inserts scoped by `business_id`. No business rules. |
 | Models | One SQLAlchemy mapping shared by SQLite and PostgreSQL. |
 | Alembic | Migrations for both databases. No database-specific types. |
 
-Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read.
+Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 foundation adds the LLM gateway, prompts, tools, and `BaseAgent`; it does not add inbox HTTP routes or LangGraph.
+
+## LLM layer
+
+Tests always use `LLM_PROVIDER=fake`. The fake provider returns scripted responses keyed by prompt name and never opens a network connection. Live providers are selected by env (`gemini`, `groq`, `ollama`) with timeouts and exponential backoff on rate limits.
+
+The daily budget is one UTC calendar day per business (`llm_usage_counters`). A call that would exceed the request or token cap fails with `{"detail": "...", "code": "llm_budget_exceeded"}`.
+
+Untrusted product names, supplier emails, and tool JSON are wrapped in `<<DATA>>` blocks. That text cannot change the tool allowlist or system instructions.
+
+`reorder_recommendations` is deterministic Python (on-hand, reorder point, 14-day forecast). The LLM does not compute quantities.
 
 ## Data flow
 
@@ -94,7 +109,9 @@ The purchase-order service does not update a stored on-hand balance. Received qu
 | Database | SQLite for local dev. PostgreSQL (Supabase or Neon free tier) for deploy |
 | Auth | JWT access token plus refresh token. Passwords hashed with argon2id |
 | Tests | pytest for backend services |
-| Later, not Phase 1 | LangGraph agents, forecasting with statsforecast or Prophet, Langfuse |
+| Forecast | Weekly seasonal naive (or a short-history daily average), computed in the forecast service. Not statsforecast or Prophet. |
+| LLM | Gateway in `app/llm/`. Default and CI provider is `fake`. Live: Gemini, Groq, or Ollama over HTTP. |
+| Later | LangGraph agents, Langfuse |
 
 Auth details:
 
@@ -112,4 +129,4 @@ Local dev uses `DATABASE_URL` pointing at a SQLite file. Deploy points the same 
 4. **Money uses Decimal, never float.** Columns are `Numeric(18, 4)`. Python values are `decimal.Decimal`. JSON encodes them as strings.
 5. **One model set for SQLite and PostgreSQL.** Use `Numeric` for money and quantity, `CHAR(36)` for ids (app-generated UUID strings), `VARCHAR` plus `CHECK` for enums, and `JSON` for audit payloads. No PostgreSQL-only column types and no float columns.
 6. **Tenant scope comes from the token.** Repository reads and writes for business data filter on `business_id` from the JWT. The client's body does not choose the tenant.
-7. **Phase 1 has no AI.** Do not import LangGraph, an LLM client, statsforecast, Prophet, or Langfuse in Phase 1.
+7. **LLM foundation is isolated.** Tests use the fake provider. Write tools only create `agent_suggestions`. The forecast service and replenishment math stay in Python. LangGraph is not imported yet.

@@ -1,0 +1,16 @@
+prompts:
+  echo:
+    file: v1/echo.prompt.md
+    version: "1"
+  structured_retry:
+    file: v1/structured_retry.prompt.md
+    version: "1"
+  tool_router:
+    file: v1/tool_router.prompt.md
+    version: "1"
+  draft_po:
+    file: v1/draft_po.prompt.md
+    version: "1"
+  draft_email:
+    file: v1/draft_email.prompt.md
+    version: "1"

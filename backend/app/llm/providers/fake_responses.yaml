@@ -1,0 +1,24 @@
+echo:
+  text: "ok"
+  tokens_in: 8
+  tokens_out: 2
+structured_retry:
+  attempts:
+    - text: "not-json"
+      tokens_in: 10
+      tokens_out: 4
+    - text: '{"ok": true}'
+      tokens_in: 12
+      tokens_out: 6
+tool_router:
+  text: '{"tool":"get_stock"}'
+  tokens_in: 9
+  tokens_out: 5
+draft_po:
+  text: '{"suggestion_type":"draft_po"}'
+  tokens_in: 11
+  tokens_out: 7
+draft_email:
+  text: '{"suggestion_type":"draft_email"}'
+  tokens_in: 11
+  tokens_out: 7

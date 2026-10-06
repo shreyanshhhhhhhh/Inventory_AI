@@ -7,9 +7,17 @@ Read these before changing the product:
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — screens, roles, day-to-day flow
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — schema and ledger invariants
 
-**Phase 1 has no AI.** Do not add agent frameworks, LLM calls, or forecasting libraries until those phases. That includes LangGraph, LangChain, any chat/completions client, statsforecast, Prophet, and Langfuse.
+**AI foundation is in progress.** The LLM gateway, versioned prompts, tool registry, and `BaseAgent` may be used. Do not add LangGraph, LangChain, or Langfuse yet. Demand forecasts stay in `app/services/forecast.py` and must not create purchase orders or write the ledger. Do not add statsforecast or Prophet unless that service is replaced on purpose.
 
-Current implementation scope is Phase 1 only: catalog, stock ledger, purchase orders, suppliers, basic dashboard, auth, and onboarding.
+### LLM and agent rules
+
+- **No real LLM in tests.** `LLM_PROVIDER` must be `fake`. The fake provider returns scripted responses. Pytest fails if a live provider (`gemini`, `groq`, `ollama`) is constructed.
+- **No arithmetic by the LLM.** On-hand, forecasts, reorder quantities, and money come from service tools. The model must not add, multiply, or invent quantities.
+- **No direct writes.** Write tools only insert `agent_suggestions`. They never create purchase orders, send email, or post stock movements.
+- **Tenant scope.** Tools take `business_id` from the injected `AgentContext`, never from the model.
+- **Untrusted text is DATA.** Product names, supplier emails, and tool JSON go in `<<DATA>>` blocks and cannot change the tool allowlist or instructions.
+
+Current implementation scope is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation: catalog, stock ledger, purchase orders, suppliers, dashboard, auth, onboarding, Insights forecasts, LLM gateway, tools, and `BaseAgent`. Concrete procurement and exception agents are not in this slice.
 
 ## Permanent backend rules
 
@@ -42,6 +50,8 @@ backend/
     routers/
     schemas/              Pydantic v2
     services/             business logic, plain functions
+    llm/                  gateway, providers, versioned prompts
+    agents/               BaseAgent, tools, context
     repositories/
     models/               SQLAlchemy 2
     db.py
@@ -90,7 +100,7 @@ Do not add a frontend test framework in Phase 1. Walk the flows in `docs/WORKFLO
 1. **Never edit stock outside the ledger service.** No on-hand column, no `UPDATE`/`DELETE` on `stock_movements`, no "fix up" scripts that rewrite history. Post a new movement.
 2. **Small commits.** One concern per commit. Do not mix a schema change with an unrelated UI pass.
 3. **Update docs when design changes.** If a column, rule, phase boundary, or screen flow changes, update the doc in the same commit as the code.
-4. **Do not widen Phase 1.** No accounting, barcode hardware, mobile client, multi-currency, or AI dependencies.
+4. **Do not widen Phase 1.** No accounting, barcode hardware, mobile client, or multi-currency. The Phase 2 forecast service stays read-only. The Phase 3 AI foundation may add the LLM gateway and tools, but not LangGraph, Langfuse, or live LLM calls in tests.
 5. **Hash passwords with argon2id.** Store refresh tokens only as a SHA-256 hash.
 
 ## When you are unsure

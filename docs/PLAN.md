@@ -4,7 +4,7 @@ Inventory management for a small retailer (about 50–500 SKUs). The owner shoul
 
 Later phases add the differentiator: agentic AI. Agents turn forecasts into actions, handle exceptions, and explain every decision. Those phases are not this project yet.
 
-**Current work is project prep and Phase 1 only. Phase 1 has no AI** — no agents, no LLM calls, no forecasting.
+**Current work is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation (gateway, tools, BaseAgent).** There are still no LangGraph agents and no live LLM calls in tests. Forecasts are computed from sales history and do not create purchase orders. Agent tools only write `agent_suggestions`.
 
 Design lives in [ARCHITECTURE.md](ARCHITECTURE.md), [WORKFLOW.md](WORKFLOW.md), and [DATA_MODEL.md](DATA_MODEL.md). Coding agents follow [AGENTS.md](../AGENTS.md).
 
@@ -54,8 +54,9 @@ No mobile app, barcode hardware, accounting or general ledger, multi-currency, m
 ### P2 — Data and forecasting
 
 - **Goal:** Turn ledger history into a demand forecast the owner can see.
-- **Deliverables:** Demand series from `sale` movements, a forecast per SKU (statsforecast or Prophet), Insights page with real numbers. No automatic purchasing.
+- **Deliverables:** Demand series from `sale` movements, a forecast per SKU, Insights page with real numbers. No automatic purchasing.
 - **Why it matters:** The procurement agent needs a quantity to act on.
+- **Forecast method:** Computed on read. No forecast table. Demand is the daily sum of `sale` quantities (sign flipped) per SKU, across locations. The default window is the last 56 days. The default horizon is the next 14 days. No sales in the window yields zeros (`no_sales`). Fewer than 7 days since the first sale uses the average daily demand since that day (`daily_average`). Otherwise the next days repeat the last 7 (`seasonal_naive`). Quantities stay `Decimal`. This is the weekly seasonal-naive baseline, not a statsforecast or Prophet dependency.
 - **Done when:** Insights shows a forecast from real sales history, and nothing in this phase creates a purchase order.
 
 ### P3 — Tool layer, procurement agent, approval inbox
