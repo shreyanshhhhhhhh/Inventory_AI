@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_serializer
 
@@ -61,3 +62,42 @@ class AccountsBySupplierRowResponse(BaseModel):
 
 class AccountsBySupplierResponse(BaseModel):
     items: list[AccountsBySupplierRowResponse] = Field(default_factory=list)
+
+
+ForecastMethod = Literal["seasonal_naive", "daily_average", "no_sales"]
+
+
+class DemandPointResponse(BaseModel):
+    date: date
+    units: Decimal
+
+    @field_serializer("units")
+    def serialize_units(self, value: Decimal) -> str:
+        return _serialize_decimal(value) or "0"
+
+
+class ForecastSummaryResponse(BaseModel):
+    product_id: str
+    sku: str
+    product_name: str
+    history_units: Decimal
+    forecast_units: Decimal
+    daily_average: Decimal
+    method: ForecastMethod
+
+    @field_serializer("history_units", "forecast_units", "daily_average")
+    def serialize_quantities(self, value: Decimal) -> str:
+        return _serialize_decimal(value) or "0"
+
+
+class ForecastListResponse(BaseModel):
+    history_days: int
+    horizon_days: int
+    items: list[ForecastSummaryResponse]
+
+
+class ForecastDetailResponse(ForecastSummaryResponse):
+    history_days: int
+    horizon_days: int
+    history: list[DemandPointResponse]
+    forecast: list[DemandPointResponse]

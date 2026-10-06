@@ -225,6 +225,36 @@ export type ApiTopSellers = {
   items: ApiTopSeller[];
 };
 
+export type ForecastMethod = "seasonal_naive" | "daily_average" | "no_sales";
+
+export type ApiDemandPoint = {
+  date: string;
+  units: string;
+};
+
+export type ApiForecastSummary = {
+  product_id: string;
+  sku: string;
+  product_name: string;
+  history_units: string;
+  forecast_units: string;
+  daily_average: string;
+  method: ForecastMethod;
+};
+
+export type ApiForecastList = {
+  history_days: number;
+  horizon_days: number;
+  items: ApiForecastSummary[];
+};
+
+export type ApiForecastDetail = ApiForecastSummary & {
+  history_days: number;
+  horizon_days: number;
+  history: ApiDemandPoint[];
+  forecast: ApiDemandPoint[];
+};
+
 export type ApiAccountsSummary = {
   stock_value: string;
   open_po_value: string;

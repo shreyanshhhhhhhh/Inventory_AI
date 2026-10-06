@@ -17,6 +17,8 @@ import type {
   ApiTeamUser,
   ApiDemoSeedResult,
   ApiMovementsOverTime,
+  ApiForecastDetail,
+  ApiForecastList,
   ApiTopSellers,
   ApiNeedsAttentionItem,
   ApiImportResult,
@@ -523,6 +525,20 @@ export const api = {
     topSellers(days = 30, limit = 5): Promise<ApiTopSellers> {
       return request<ApiTopSellers>(
         `${API_V1}/insights/top-sellers?days=${days}&limit=${limit}`,
+      );
+    },
+    forecasts(historyDays = 56, horizonDays = 14): Promise<ApiForecastList> {
+      return request<ApiForecastList>(
+        `${API_V1}/insights/forecasts?history_days=${historyDays}&horizon_days=${horizonDays}`,
+      );
+    },
+    forecast(
+      productId: string,
+      historyDays = 56,
+      horizonDays = 14,
+    ): Promise<ApiForecastDetail> {
+      return request<ApiForecastDetail>(
+        `${API_V1}/insights/forecasts/${productId}?history_days=${historyDays}&horizon_days=${horizonDays}`,
       );
     },
   },

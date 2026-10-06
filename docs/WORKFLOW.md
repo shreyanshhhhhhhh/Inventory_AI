@@ -19,14 +19,14 @@ CSV header: `sku`, `name`, `category`, `location`, `quantity`, `unit`, `reorder_
 
 ## Sidebar
 
-| Section | Phase 1 |
+| Section | What it does |
 | --- | --- |
 | Home | On-hand units, inventory value where a preferred supplier cost exists, low-stock list (`on-hand <= reorder_point`), open purchase orders, recent movements. |
 | Catalog | Categories, products, archive, supplier links (cost, lead time, preferred flag). |
 | Inventory | On-hand by location, post a sale, adjustment, or transfer, movement history. |
 | Orders & Suppliers | Suppliers and purchase orders: draft, approved, sent, received, or cancelled. |
 | Agent Inbox | Placeholder. Empty state says it is not in this version. No API calls to a model. |
-| Insights | Placeholder. Same empty state. Forecasting is Phase 2. |
+| Insights | Demand forecast per SKU for the next 14 days, from `sale` movements, plus movement and top-seller charts. Forecasting does not create a purchase order. |
 | Accounts (lite) | Profile, password change, and the team list. This is not a general ledger. |
 | Settings | Business name and locations. Currency is shown and not editable. |
 
