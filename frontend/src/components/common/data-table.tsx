@@ -33,6 +33,7 @@ interface DataTableProps<T> {
   emptyState?: ReactNode;
   toolbar?: ReactNode;
   onRowClick?: (row: T) => void;
+  selectedRowId?: string;
   hideSearch?: boolean;
 }
 
@@ -47,6 +48,7 @@ export function DataTable<T>({
   emptyState,
   toolbar,
   onRowClick,
+  selectedRowId,
   hideSearch = false,
 }: DataTableProps<T>) {
   const [internalSearch, setInternalSearch] = useState("");
@@ -94,7 +96,7 @@ export function DataTable<T>({
         ) : null}
       </div>
 
-      <div className="overflow-hidden rounded-xl border">
+      <div className="overflow-hidden rounded-xl border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
@@ -121,6 +123,7 @@ export function DataTable<T>({
                 <TableRow
                   key={getRowId(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  data-state={selectedRowId === getRowId(row) ? "selected" : undefined}
                   className={cn(onRowClick && "cursor-pointer")}
                 >
                   {columns.map((column) => (
