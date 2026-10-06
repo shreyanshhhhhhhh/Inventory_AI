@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     gemini_api_key: str | None = None
     groq_api_key: str | None = None
     ollama_base_url: str = "http://127.0.0.1:11434"
+    orchestrator_max_steps: int = 12
+    orchestrator_step_timeout_seconds: float = 15
+    orchestrator_step_retries: int = 1
+    orchestrator_max_concurrent_runs_per_user: int = 2
+    orchestrator_rate_limit_per_user_per_minute: int = 20
+    orchestrator_confidence_min: float = 0.7
+    orchestrator_chat_history: int = 6
 
     @property
     def cors_origin_list(self) -> list[str]:

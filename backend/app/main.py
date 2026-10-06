@@ -9,6 +9,7 @@ from app.routers import (
     auth,
     businesses,
     catalog,
+    chat,
     dashboard,
     health,
     insights,
@@ -46,4 +47,5 @@ api_v1.include_router(accounts.router)
 api_v1.include_router(settings_router.router)
 api_v1.include_router(sales.router)
 api_v1.include_router(onboarding.router)
+api_v1.include_router(chat.router)
 app.include_router(api_v1)

@@ -2,7 +2,7 @@
 
 A small-shop inventory app: catalog, stock ledger, suppliers, purchase orders, dashboard, and team settings. The browser is a Next.js app. It talks only to a FastAPI API. Local development uses SQLite; deploy uses PostgreSQL through the same models.
 
-**No agents yet.** Agent Inbox is a placeholder. Insights shows a 14-day demand forecast per SKU from real sales, plus movement and top-seller charts. Forecasts do not create purchase orders.
+**Orchestrator plumbing is in.** Chat runs live at `/api/v1/chat`. Agent Inbox in the UI is still a placeholder. Insights shows a 14-day demand forecast per SKU from real sales, plus movement and top-seller charts. Forecasts do not create purchase orders.
 
 ## Ports
 
@@ -77,6 +77,7 @@ Open http://127.0.0.1:43123, sign up at `/signup`, then use the app. Owners can 
 - **Accounts** — stock value, open PO value, payables, supplier totals (read-only)
 - **Settings** — business profile, locations, team (owner-only), autonomy rules (stored only)
 - **Onboarding** — demo seed API and `scripts/seed_demo.py`
+- **Chat orchestrator** — `POST /api/v1/chat/runs`, SSE events, cancel/resume. Placeholder agents only. See `docs/ORCHESTRATOR.md`.
 
 Staff users can manage day-to-day stock and orders. Only **owners** can approve purchase orders, change settings, and manage team members.
 

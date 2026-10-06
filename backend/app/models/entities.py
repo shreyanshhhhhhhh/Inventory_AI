@@ -368,10 +368,11 @@ class AgentRun(IdMixin, Base):
     __tablename__ = "agent_runs"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('running', 'completed', 'failed')",
+            "status IN ('running', 'awaiting_approval', 'completed', 'failed', 'cancelled')",
             name="agent_run_status_known",
         ),
         Index("ix_agent_runs_business_id", "business_id"),
+        Index("ix_agent_runs_actor_status", "actor_user_id", "status"),
     )
 
     business_id: Mapped[str] = mapped_column(
@@ -391,6 +392,11 @@ class AgentRun(IdMixin, Base):
     started_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
     finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    state_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    events_data: Mapped[list[object] | None] = mapped_column(JSON, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 
 class AgentStep(IdMixin, Base):
@@ -451,6 +457,33 @@ class AgentSuggestion(IdMixin, Base):
     suggestion_type: Mapped[str] = mapped_column(String(32), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class ConversationMessage(IdMixin, Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'assistant', 'system')", name="chat_message_role_known"),
+        Index("ix_chat_messages_user_created", "business_id", "user_id", "created_at"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
 
 

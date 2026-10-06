@@ -4,9 +4,9 @@ Inventory management for a small retailer (about 50–500 SKUs). The owner shoul
 
 Later phases add the differentiator: agentic AI. Agents turn forecasts into actions, handle exceptions, and explain every decision. Those phases are not this project yet.
 
-**Current work is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation (gateway, tools, BaseAgent).** There are still no LangGraph agents and no live LLM calls in tests. Forecasts are computed from sales history and do not create purchase orders. Agent tools only write `agent_suggestions`.
+**Current work is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator.** Concrete procurement and exception agents are still placeholders. There are no live LLM calls in tests. Forecasts are computed from sales history and do not create purchase orders. Agent tools only write `agent_suggestions`. Orchestrator details live in [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
-Design lives in [ARCHITECTURE.md](ARCHITECTURE.md), [WORKFLOW.md](WORKFLOW.md), and [DATA_MODEL.md](DATA_MODEL.md). Coding agents follow [AGENTS.md](../AGENTS.md).
+Design lives in [ARCHITECTURE.md](ARCHITECTURE.md), [WORKFLOW.md](WORKFLOW.md), [DATA_MODEL.md](DATA_MODEL.md), and [ORCHESTRATOR.md](ORCHESTRATOR.md). Coding agents follow [AGENTS.md](../AGENTS.md).
 
 ## Phase 1 assumptions
 
@@ -62,7 +62,7 @@ No mobile app, barcode hardware, accounting or general ledger, multi-currency, m
 ### P3 — Tool layer, procurement agent, approval inbox
 
 - **Goal:** An agent proposes purchase orders; a person approves them before they exist as orders.
-- **Deliverables:** Phase 1 service functions registered as tools, a LangGraph procurement agent, Agent Inbox (approve / reject).
+- **Deliverables:** Phase 1 service functions registered as tools, the LangGraph chat orchestrator, placeholder agents, Agent Inbox (approve / reject) still later.
 - **Why it matters:** First closed loop from forecast to action, with a human gate.
 - **Done when:** A proposal shows up in the inbox, approval calls the same purchase-order service a person uses, and both the proposal and the decision are in `audit_log`.
 

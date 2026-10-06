@@ -40,7 +40,7 @@ Two roles. There is no finer permission matrix in Phase 1.
 
 **Staff** handle day-to-day stock and orders: view the catalog, post sales, adjustments, transfers, and receipts, and create and receive purchase orders. Staff can add a product or supplier when that is needed to record stock or an order. Staff cannot change settings, currency, locations, team membership, or billing.
 
-The owner adds a staff member from Accounts with name, email, and a temporary password. Phase 1 does not send invite email. Deactivate a user instead of deleting them; their ledger and audit rows stay.
+The owner adds a staff member from Accounts with name, email, and a temporary password. Phase 1 does not send invite email. Deactivate a user instead of deleting them; their ledger and audit rows stay. Staff cannot trigger owner-only orchestrator intents (`/draft-po`, `/email`).
 
 ## Daily stock and purchasing
 
@@ -50,6 +50,10 @@ The owner adds a staff member from Accounts with name, email, and a temporary pa
 - **Purchase order.** Draft lines (product, quantity, unit cost snapshot), then approve and send. Receiving posts `purchase_receipt` rows with positive quantity. Status moves `draft` → `approved` → `sent` → `received`, or to `cancelled`. There is no partial-receipt status.
 
 Inventory value on Home is on-hand times the preferred supplier `unit_cost`. If no preferred cost exists, the UI shows the value as unknown.
+
+## Chat orchestrator
+
+Backend only in this slice. `POST /api/v1/chat/runs` accepts slash commands and free text, including compound requests. Write plans wait for approval. Events stream over SSE. See [ORCHESTRATOR.md](ORCHESTRATOR.md). Agent Inbox in the UI is still a placeholder.
 
 ## Future daily agent workflow
 

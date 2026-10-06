@@ -1,6 +1,6 @@
 # Data model
 
-Phase 1 schema, plus a computed Phase 2 demand forecast and the Phase 3 AI foundation tables (`agent_runs`, `agent_steps`, `agent_suggestions`, `llm_usage_counters`). No forecast table, no LangGraph checkpoint tables, and no inbox UI tables.
+Phase 1 schema, plus a computed Phase 2 demand forecast, the Phase 3 AI foundation tables (`agent_runs`, `agent_steps`, `agent_suggestions`, `llm_usage_counters`), orchestrator columns on `agent_runs`, and `chat_messages`. No forecast table, no LangGraph checkpoint tables, and no inbox UI tables.
 
 **Multi-tenant assumption:** a user belongs to one business. Almost every row is scoped by `business_id`. The API takes `business_id` from the JWT, not from the client. Exception: `refresh_tokens` hang off `users`. Signup creates the business and the owner together, so `users.business_id` is set immediately. The column stays nullable. `onboarding_completed_at` stays null until the onboarding wizard, which is not part of signup.
 
@@ -41,6 +41,9 @@ erDiagram
   agent_runs ||--o{ agent_steps : records
   agent_runs ||--o{ agent_suggestions : proposes
   businesses ||--o{ llm_usage_counters : budgets
+  businesses ||--o{ chat_messages : chat
+  users ||--o{ chat_messages : author
+  agent_runs |o--o{ chat_messages : run
 ```
 
 Signup sets `users.business_id` and `role` (`owner`) in the same transaction as the business. Currency on that business is `USD` until onboarding changes it. `onboarding_completed_at` stays null until that wizard finishes. The diagram shows the steady state.
@@ -308,20 +311,25 @@ Written in the same transaction as the change. Phase 1 does not add `agent_run_i
 
 ## agent_runs
 
-One row per agent execution. Insert-only except status, `finished_at`, and `error_message` when the run ends.
+One row per agent or orchestrator execution. Status, `finished_at`, `error_message`, plan, and event log may change while the run is open.
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | id | CHAR(36) | PK |
 | business_id | CHAR(36) | FK |
-| agent_name | VARCHAR(80) | For example `echo`, later `replenishment` |
-| status | VARCHAR(20) | `running`, `completed`, `failed` |
+| agent_name | VARCHAR(80) | `orchestrator`, `echo`, later `replenishment` |
+| status | VARCHAR(20) | `running`, `awaiting_approval`, `completed`, `failed`, `cancelled` |
 | prompt_name | VARCHAR(80) NULL | Primary prompt for the run, when known |
 | prompt_version | VARCHAR(32) NULL | Version from the prompt registry |
 | actor_user_id | CHAR(36) NULL | Who started the run. Null for a later scheduled job |
 | started_at | datetime | |
 | finished_at | datetime NULL | Set when the run ends |
 | error_message | TEXT NULL | Set on `failed` |
+| input_text | TEXT NULL | User message for orchestrator runs |
+| plan_data | JSON NULL | Validated DAG |
+| state_data | JSON NULL | Resume payload after approval |
+| events_data | JSON NULL | SSE events already emitted |
+| cancel_requested | BOOLEAN | Set by `POST /chat/runs/{id}/cancel` |
 
 ## agent_steps
 
@@ -372,6 +380,22 @@ Per-business daily LLM budget. The window is the UTC calendar day.
 | updated_at | datetime | |
 
 Unique `(business_id, usage_date)`.
+
+## chat_messages
+
+Recent turns for orchestrator context. Scoped by `business_id` and `user_id`.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| user_id | CHAR(36) | FK users |
+| role | VARCHAR(20) | `user`, `assistant`, `system` |
+| content | TEXT | |
+| run_id | CHAR(36) NULL | FK agent_runs |
+| created_at | datetime | |
+
+The orchestrator loads the last `ORCHESTRATOR_CHAT_HISTORY` rows (default 6) as DATA. Names in that text are resolved to ids in code.
 
 ## Tenant and delete rules
 

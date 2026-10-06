@@ -14,3 +14,12 @@ prompts:
   draft_email:
     file: v1/draft_email.prompt.md
     version: "1"
+  understand:
+    file: v1/understand.prompt.md
+    version: "1"
+  compound_plan:
+    file: v1/compound_plan.prompt.md
+    version: "1"
+  orchestrator_summary:
+    file: v1/orchestrator_summary.prompt.md
+    version: "1"

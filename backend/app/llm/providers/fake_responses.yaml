@@ -22,3 +22,46 @@ draft_email:
   text: '{"suggestion_type":"draft_email"}'
   tokens_in: 11
   tokens_out: 7
+understand:
+  match:
+    - contains: "scan for problems, reorder what's needed and draft emails"
+      text: '{"intents":[{"intent":"scan_exceptions","params":{}},{"intent":"reorder","params":{}},{"intent":"draft_email","params":{}}],"confidence":0.93,"ambiguous":false}'
+    - contains: "maybe stock or maybe forecast"
+      text: '{"intents":[{"intent":"get_stock","params":{}},{"intent":"forecast","params":{}}],"confidence":0.41,"ambiguous":true}'
+    - contains: "what is the weather"
+      text: '{"intents":[],"confidence":0.12,"ambiguous":false}'
+    - contains: "invented-number-summary"
+      text: '{"intents":[{"intent":"forecast","params":{}}],"confidence":0.9,"ambiguous":false}'
+    - contains: "unknown_agent_plan"
+      text: '{"intents":[{"intent":"scan_exceptions","params":{"query":"unknown_agent_plan"}},{"intent":"reorder","params":{"query":"unknown_agent_plan"}}],"confidence":0.9,"ambiguous":false}'
+    - contains: "cycle_plan"
+      text: '{"intents":[{"intent":"scan_exceptions","params":{"query":"cycle_plan"}},{"intent":"reorder","params":{"query":"cycle_plan"}}],"confidence":0.9,"ambiguous":false}'
+    - contains: "too_many_steps_plan"
+      text: '{"intents":[{"intent":"scan_exceptions","params":{"query":"too_many_steps_plan"}},{"intent":"reorder","params":{"query":"too_many_steps_plan"}}],"confidence":0.9,"ambiguous":false}'
+    - contains: "write_before_read_plan"
+      text: '{"intents":[{"intent":"reorder","params":{"query":"write_before_read_plan"}},{"intent":"draft_email","params":{"query":"write_before_read_plan"}}],"confidence":0.9,"ambiguous":false}'
+    - contains: "do it for that supplier"
+      text: '{"intents":[{"intent":"draft_email","params":{"supplier_name":"Acme"}}],"confidence":0.91,"ambiguous":false}'
+  text: '{"intents":[{"intent":"forecast","params":{}}],"confidence":0.9,"ambiguous":false}'
+  tokens_in: 20
+  tokens_out: 12
+compound_plan:
+  match:
+    - contains: "unknown_agent_plan"
+      text: '{"steps":[{"id":"s1","agent":"unknown_agent","task":"scan","depends_on":[]}]}'
+    - contains: "cycle_plan"
+      text: '{"steps":[{"id":"s1","agent":"exception_monitor","task":"scan","depends_on":["s2"]},{"id":"s2","agent":"replenishment","task":"recommend","depends_on":["s1"]}]}'
+    - contains: "too_many_steps_plan"
+      text: '{"steps":[{"id":"s1","agent":"forecast","task":"forecast","depends_on":[]},{"id":"s2","agent":"forecast","task":"get_stock","depends_on":[]},{"id":"s3","agent":"exception_monitor","task":"scan","depends_on":[]},{"id":"s4","agent":"replenishment","task":"recommend","depends_on":[]},{"id":"s5","agent":"explainer","task":"explain","depends_on":[]},{"id":"s6","agent":"data_quality","task":"check","depends_on":[]},{"id":"s7","agent":"exception_monitor","task":"scan","depends_on":[]},{"id":"s8","agent":"forecast","task":"forecast","depends_on":[]},{"id":"s9","agent":"replenishment","task":"recommend","depends_on":[]},{"id":"s10","agent":"explainer","task":"explain","depends_on":[]},{"id":"s11","agent":"data_quality","task":"check","depends_on":[]},{"id":"s12","agent":"forecast","task":"get_stock","depends_on":[]},{"id":"s13","agent":"exception_monitor","task":"scan","depends_on":[]}]}'
+    - contains: "write_before_read_plan"
+      text: '{"steps":[{"id":"s1","agent":"supplier_comm","task":"draft_emails","depends_on":[]},{"id":"s2","agent":"replenishment","task":"recommend","depends_on":["s1"]}]}'
+  text: '{"steps":[{"id":"s1","agent":"exception_monitor","task":"scan","depends_on":[]},{"id":"s2","agent":"replenishment","task":"recommend","depends_on":[]},{"id":"s3","agent":"supplier_comm","task":"draft_emails","depends_on":["s1","s2"]}]}'
+  tokens_in: 24
+  tokens_out: 18
+orchestrator_summary:
+  match:
+    - contains: "invented-number-summary"
+      text: '{"summary":"There are 99999 units at risk."}'
+  text: '{"summary":"Placeholder agents reported that they are not implemented yet."}'
+  tokens_in: 16
+  tokens_out: 10

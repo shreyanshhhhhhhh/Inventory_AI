@@ -1,8 +1,8 @@
 # Architecture
 
-Phase 1 is a Next.js client and a FastAPI server. The browser never touches the database. The demand forecast is computed in the API from sale history. The Phase 3 AI foundation adds an LLM gateway, versioned prompts, a tool registry, and `BaseAgent`. LangGraph and Langfuse are later phases and are not dependencies.
+Phase 1 is a Next.js client and a FastAPI server. The browser never touches the database. The demand forecast is computed in the API from sale history. The Phase 3 AI layer adds an LLM gateway, versioned prompts, a tool registry, `BaseAgent`, and a LangGraph chat orchestrator. Langfuse and LangChain agents are later and are not dependencies.
 
-See [PLAN.md](PLAN.md), [WORKFLOW.md](WORKFLOW.md), and [DATA_MODEL.md](DATA_MODEL.md).
+See [PLAN.md](PLAN.md), [WORKFLOW.md](WORKFLOW.md), [DATA_MODEL.md](DATA_MODEL.md), and [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
 ## System
 
@@ -27,12 +27,14 @@ flowchart TB
   Repos --> Models
   Models --> DB
 
-  subgraph later ["Phase 3 foundation"]
+  subgraph later ["Phase 3"]
     Gateway[LLM gateway]
     Tools[Agent tools]
     BaseAgent[BaseAgent]
+    Orch[LangGraph orchestrator]
   end
 
+  Orch --> BaseAgent
   BaseAgent --> Gateway
   BaseAgent --> Tools
   Tools -->|"same service functions"| Services
@@ -53,11 +55,12 @@ flowchart TB
 | Prompt registry | Versioned files under `app/llm/prompts/`. Every LLM call records prompt name and version. |
 | Agent tools | Thin typed wrappers over services. Tenant-scoped via `AgentContext`. Write tools only create `agent_suggestions`. |
 | BaseAgent | Name, allowlist, max tool calls, `run(task, context)`. Concrete procurement agents are later. |
+| Orchestrator | LangGraph pipeline: understand → validate → plan → approve_plan → dispatch → aggregate → reply. Slash commands, free text, and compound requests. SSE events. |
 | Repositories | Queries and inserts scoped by `business_id`. No business rules. |
 | Models | One SQLAlchemy mapping shared by SQLite and PostgreSQL. |
 | Alembic | Migrations for both databases. No database-specific types. |
 
-Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 foundation adds the LLM gateway, prompts, tools, and `BaseAgent`; it does not add inbox HTTP routes or LangGraph.
+Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 adds the LLM gateway, prompts, tools, `BaseAgent`, and the chat orchestrator. Inbox UI and filled-in procurement agents are later.
 
 ## LLM layer
 
@@ -111,7 +114,8 @@ The purchase-order service does not update a stored on-hand balance. Received qu
 | Tests | pytest for backend services |
 | Forecast | Weekly seasonal naive (or a short-history daily average), computed in the forecast service. Not statsforecast or Prophet. |
 | LLM | Gateway in `app/llm/`. Default and CI provider is `fake`. Live: Gemini, Groq, or Ollama over HTTP. |
-| Later | LangGraph agents, Langfuse |
+| Orchestrator | LangGraph in `app/orchestrator/`. Chat runs under `/api/v1/chat`. |
+| Later | Langfuse, filled-in procurement and exception agents |
 
 Auth details:
 
@@ -129,4 +133,4 @@ Local dev uses `DATABASE_URL` pointing at a SQLite file. Deploy points the same 
 4. **Money uses Decimal, never float.** Columns are `Numeric(18, 4)`. Python values are `decimal.Decimal`. JSON encodes them as strings.
 5. **One model set for SQLite and PostgreSQL.** Use `Numeric` for money and quantity, `CHAR(36)` for ids (app-generated UUID strings), `VARCHAR` plus `CHECK` for enums, and `JSON` for audit payloads. No PostgreSQL-only column types and no float columns.
 6. **Tenant scope comes from the token.** Repository reads and writes for business data filter on `business_id` from the JWT. The client's body does not choose the tenant.
-7. **LLM foundation is isolated.** Tests use the fake provider. Write tools only create `agent_suggestions`. The forecast service and replenishment math stay in Python. LangGraph is not imported yet.
+7. **LLM foundation is isolated.** Tests use the fake provider. Write tools only create `agent_suggestions`. The forecast service and replenishment math stay in Python. Orchestrator plans are validated in code. LangGraph stores run state on `agent_runs`, not checkpoint tables.
