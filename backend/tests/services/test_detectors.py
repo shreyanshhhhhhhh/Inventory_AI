@@ -3,12 +3,14 @@ from decimal import Decimal
 
 from app.agents.playbooks import PlaybookContext, candidate_actions, clip_action
 from app.services.detectors import (
+    ChaseFollowupSnapshot,
     DemandSnapshot,
     DetectorFinding,
     MovementSnapshot,
     ProductCoverSnapshot,
     PurchaseOrderSnapshot,
     SupplierReliabilitySnapshot,
+    detect_chase_no_reply,
     detect_data_anomaly,
     detect_demand_shift,
     detect_overstock,
@@ -280,3 +282,41 @@ def test_playbook_filters_preconditions_and_clips_unknown_actions() -> None:
     assert "expedite" in with_supplier
     assert clip_action("hack_the_ledger", with_supplier) == "reorder_now"
     assert clip_action("expedite", with_supplier) == "expedite"
+
+
+def test_chase_no_reply_is_low_severity() -> None:
+    findings = detect_chase_no_reply(
+        [
+            ChaseFollowupSnapshot(
+                message_id="m1",
+                supplier_id="s1",
+                supplier_name="Mill",
+                po_id="po1",
+                po_number="PO-0001",
+                sent_at=datetime(2026, 10, 1, tzinfo=timezone.utc),
+                days_waiting=4,
+            )
+        ]
+    )
+    assert len(findings) == 1
+    assert findings[0].exception_type == "chase_no_reply"
+    assert findings[0].severity == "low"
+    assert findings[0].dedupe_key == "chase_no_reply:m1"
+    finding = DetectorFinding(
+        exception_type="chase_no_reply",
+        severity="low",
+        title="chase",
+        entity_type="supplier_message",
+        entity_id="m1",
+        dedupe_key="chase_no_reply:m1",
+        evidence={},
+    )
+    assert candidate_actions(
+        finding,
+        PlaybookContext(
+            supplier_count=1,
+            has_open_po=True,
+            other_location_has_stock=False,
+            other_location_is_low=False,
+        ),
+    ) == ["ignore"]

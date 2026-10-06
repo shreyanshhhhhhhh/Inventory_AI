@@ -2,7 +2,7 @@
 
 The chat orchestrator turns slash commands and free text, including compound requests, into a validated DAG of agent tasks. It is the full Phase 3A orchestrator: understand, validate, plan, optional plan approval, dispatch, aggregate, and reply.
 
-`forecast` and `exception_monitor` are filled in. Other concrete agents are still placeholders. They return typed `not implemented yet` results so the plumbing can be tested with `LLM_PROVIDER=fake`. Write steps never create purchase orders, send email, or post stock. They only insert `agent_suggestions`. Exception findings also persist to `exceptions`.
+`forecast`, `exception_monitor`, `replenishment`, and `supplier_comm` are filled in. `explainer` and `data_quality` are still placeholders. Placeholders return typed `not implemented yet` results so the plumbing can be tested with `LLM_PROVIDER=fake`. Agent write tools never create purchase orders, send email, or post stock. They only insert `agent_suggestions` (and email drafts). A `draft_po` suggestion is inserted only after `validate_po_proposal`. Approving that suggestion creates a **draft** purchase order through the purchase-order service. Approving a supplier email sends it through `EmailSender`. Exception findings also persist to `exceptions`.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [PLAN.md](PLAN.md), and [AGENTS.md](../AGENTS.md).
 
@@ -39,7 +39,7 @@ Implemented as a LangGraph `StateGraph`. Run state is stored on `agent_runs` (`p
 | `/scan` `/exceptions` | `scan_exceptions` | `exception_monitor` | `scan` | no | owner, staff |
 | `/reorder` | `reorder` | `replenishment` | `recommend` | no | owner, staff |
 | `/draft-po` `/po` | `draft_po` | `replenishment` | `recommend` then `draft_po` | yes | owner |
-| `/email` | `draft_email` | `replenishment` | `recommend` then `supplier_comm.draft_emails` | yes | owner |
+| `/email` | `draft_email` | `replenishment` then `supplier_comm` | `recommend` then `draft_emails` | yes | owner |
 | `/explain` | `explain` | `explainer` | `explain` | no | owner, staff |
 | `/quality` | `data_quality` | `data_quality` | `check` | no | owner, staff |
 
@@ -110,13 +110,13 @@ Agents register by name with tasks and write-tasks. Placeholders:
 | --- | --- | --- |
 | `forecast` | `forecast`, `get_stock` | Tools: `get_history`, `run_forecast`, `get_forecast_accuracy`, `get_forecast`, `get_stock`. Typed eval (trend, chosen model, WAPE vs naive, confidence, caveats). LLM writes a one-line interpretation grounded in those fields. Read-only. |
 | `exception_monitor` | `scan` | Detectors in code. LLM ranks playbook actions only. Writes `exceptions` and `agent_suggestions`. Orchestrator task is still read-only so `/scan` does not pause. |
-| `replenishment` | `recommend`, `draft_po` | not implemented yet |
-| `supplier_comm` | `draft_emails` | not implemented yet |
+| `replenishment` | `recommend`, `draft_po` | Tools: `reorder_recommendations`, `get_supplier_reliability`, `get_open_pos`, `create_po_suggestion`. `/reorder` is read-only. `/draft-po` and `/po` may write one suggestion per supplier after the guardrail. |
+| `supplier_comm` | `draft_emails` | Tools: `get_po`, `get_supplier`, `get_exception`, `draft_email`. Templates fill PO numbers, quantities, and dates in code. The LLM writes greeting/ask/closing. A grounding check regenerates once, then falls back to the plain template. Does not send mail. |
 | `explainer` | `explain` | not implemented yet |
 | `data_quality` | `check` | not implemented yet |
-| `guardrail` | `review` | records that the plan was gated |
+| `guardrail` | `review` | Re-validates purchase proposals on earlier steps. Does not create a purchase order. |
 
-Later prompts fill the placeholders in. They still must use service tools for quantities and money.
+Later prompts fill the remaining placeholders in. They still must use service tools for quantities and money.
 
 ## HTTP and runs
 
@@ -172,10 +172,14 @@ The summary LLM sees those typed objects inside `<<DATA>>` blocks. If it invents
 
 - LangGraph is used only for this orchestrator graph. No LangChain agents and no Langfuse.
 - Tests always use `LLM_PROVIDER=fake`. Live providers cannot be constructed under pytest.
-- Placeholder agents except `forecast` and `exception_monitor` do not call inventory tools yet. The DAG, approval, SSE, cancel, and summary checks are in. `forecast` reads demand through service tools. `exception_monitor` runs detectors in code.
-- Write tools, when filled in later, still only insert `agent_suggestions`. The exception monitor also inserts `exceptions` rows through a service, never purchase orders or ledger rows.
-- Chat has an API and an Agent Inbox chat UI. The forecast agent and exception monitor are filled in. Other concrete agents are still placeholders.
-- Nightly scans: `POST /api/v1/jobs/exception-scan` (owner JWT or `X-Job-Secret`). Optional in-process scheduler when `EXCEPTION_SCAN_SCHEDULER_ENABLED=true`. Owners set `exception_scan_enabled` and `exception_scan_hour_utc` on autonomy rules. Default hour is 02:00 UTC. The scheduler is off in pytest.
+- `supplier_comm` drafts emails from order facts and never sends them. `explainer` and `data_quality` are still placeholders. `forecast`, `exception_monitor`, and `replenishment` call service tools. The DAG, approval, SSE, cancel, and summary checks are in.
+- Write tools still only insert `agent_suggestions` (and `supplier_messages` drafts). `create_po_suggestion` and `create_draft_po_suggestion` refuse a `draft_po` row unless `validate_po_proposal` passed. `draft_email` inserts a `supplier_messages` draft. The exception monitor also inserts `exceptions` rows through a service, never purchase orders or ledger rows.
+- Chat has an API and an Agent Inbox chat UI. The forecast agent, exception monitor, replenishment agent, and supplier communication agent are filled in.
+- Nightly scans: `POST /api/v1/jobs/exception-scan` (owner JWT or `X-Job-Secret`). Optional in-process scheduler when `EXCEPTION_SCAN_SCHEDULER_ENABLED=true`. Owners set `exception_scan_enabled`, `exception_scan_hour_utc`, and `chase_followup_days` on autonomy rules. Default hour is 02:00 UTC. Default chase follow-up is 3 days. The scheduler is off in pytest.
+- Supplier email: `EMAIL_SENDER=console` (default) logs and never delivers; `smtp` uses `EMAIL_FROM` / `EMAIL_SMTP_*`. Inbox shows a banner in console mode. `POST /api/v1/supplier-replies` stores a paste or webhook. Reply text is DATA. Extracted delay/date become owner-approved suggestions (`update_po_expected_date`).
+- Plan approval is plan-level, not per step. Independent reads still run after one Run click.
+- Tenant ids come from the JWT. The model cannot choose `business_id`.
+- SQLite and PostgreSQL share `agent_runs` extras, `chat_messages`, and `exceptions`. LangGraph does not own extra tables. Approving a suggestion does not add a table.
 
 ### Forecast agent (numbers from code)
 
@@ -195,10 +199,41 @@ Pure detectors in `app/services/detectors.py`:
 | `demand_drop` | ratio < 0.5 or z < -2.5 | Quiet SKUs (0 vs 0) do not fire |
 | `supplier_delay` | PO `approved`/`sent` with `expected_on` before today; or reliability_score < 0.7 and overdue_count ≥ 2 | |
 | `data_anomaly` | negative on-hand; duplicate sales (same product/location/minute/qty); \|adjustment\| > max(100, 3×14-day forecast) | |
+| `chase_no_reply` | a sent chase with no `supplier_replies` row after `autonomy_rules.chase_followup_days` (default 3) | always low; playbook is `ignore` |
 
 Dedupe key is stable (`{type}:{entity_id}` or a more specific anomaly key). An open row is updated, not re-inserted.
 
 Playbooks in `app/agents/playbooks.py` list ordered actions (`reorder_now`, `expedite`, `alternate_supplier`, `transfer_stock`, `count_stock`, `ignore`) with preconditions in code. The LLM may only pick from that list; anything else is clipped to the first valid action. Approval-needed actions become `agent_suggestions`.
-- Plan approval is plan-level, not per step. Independent reads still run after one Run click.
-- Tenant ids come from the JWT. The model cannot choose `business_id`.
-- SQLite and PostgreSQL share `agent_runs` extras, `chat_messages`, and `exceptions`. LangGraph does not own extra tables.
+
+### Replenishment agent (quantities from code)
+
+`/reorder` runs `replenishment.recommend` (owner and staff, no write). `/draft-po <supplier>` and `/po <supplier>` run `recommend`, then `draft_po` (owner only), then `guardrail.review`. The remainder of the slash command is the supplier name.
+
+Tools: `reorder_recommendations` (on-hand, reorder point, safety stock, forecast, recommended quantity, and linked suppliers), `get_supplier_reliability`, `get_open_pos`, `create_po_suggestion`.
+
+The model may only choose which real recommendation rows to keep, whether to prefer a linked alternate when the preferred supplier is late, and a confidence from 0 to 1. Unknown product ids are dropped. If every id is unknown, code uses the real rows. Quantities and unit costs are copied from the recommendation and the `product_suppliers` row. The model cannot add a reason code the evidence does not support.
+
+Reason codes: `LOW_COVER` on every included row, `FORECAST_UP` when forecast units are above the reorder point, `SUPPLIER_LATE` when the preferred or chosen supplier has reliability under 0.7 or at least one overdue PO, `ALTERNATE_SUPPLIER` when the chosen link is not preferred.
+
+Confidence at or above `ORCHESTRATOR_CONFIDENCE_MIN` (default 0.7) is required to write. Missing supplier cost, a non-integer recommended quantity, or low confidence produces a message and no suggestion. A non-integer quantity is not rounded. An open draft, approved, or sent PO whose quantity already covers the recommended quantity is skipped. One suggestion is stored per supplier.
+
+`POST /api/v1/suggestions/{id}/approve` (owner) runs the guardrail again and creates a **draft** purchase order. `POST /api/v1/suggestions/{id}/reject` stores `{ "reason": "..." }`. Decisions live on the suggestion payload (`decisions`: action, reason, actor, time, and `purchase_order_id` when approved) and on `audit_log`. The purchase order still needs the normal approve and send flow.
+
+### Purchase guardrail (no LLM)
+
+`validate_po_proposal` in `app/services/guardrail.py` checks that the supplier and SKUs belong to the business, the supplier is active, quantities are positive whole numbers, each line is within `PO_MAX_LINE_QUANTITY` (default 1000), the proposal has at most `PO_MAX_LINES` (default 40), unit cost matches `product_suppliers.unit_cost` within `PO_COST_TOLERANCE_RATIO` (default 0.01), and the total is within `PO_MAX_TOTAL` (default 50000). It rejects the proposal when an open draft, approved, or sent PO already covers that SKU quantity. It does not fall back to the product catalog cost.
+
+`required_approval` is `auto` only when `autonomy_rules.auto_approve_below_amount` is set and the total is strictly below that amount. Null means the owner has not enabled auto-approve, so the result is `human`. Auto-approve still inserts the suggestion, marks it `auto_approved`, and creates a draft purchase order. A failed check always reports `human` and stores nothing.
+
+`create_suggestion(..., suggestion_type="draft_po")` raises `guardrail_required` unless the guarded creator opened the gate after a passing check. The Orders screen and demo seed still call `create_po` for a person, not for an agent.
+
+### Supplier communication agent (facts from code)
+
+`/email <supplier> <order|chase|expedite|delay-notice>` is owner-only. Compound plans may include `supplier_comm.draft_emails`. Default kind is `chase` when the supplier has an approved or sent PO, otherwise `order`. Missing supplier asks `/email <supplier> chase`.
+
+Tools: `get_po`, `get_supplier`, `get_exception`, `draft_email`. Quantities, dates, and PO numbers come from those tools. The LLM returns greeting, ask, and closing only. Code fills a template, checks that every PO number, quantity, and date is in the facts, regenerates wording once, then falls back to the plain template. `draft_email` inserts `supplier_messages` (`status=draft`) and a `draft_email` suggestion. It never calls `EmailSender`.
+
+The Inbox card shows editable subject and body, Approve and Send, Save draft, and Reject. `POST /api/v1/supplier-messages/{id}/send` is owner-only. Failed SMTP sets `status=failed` and keeps the body. Console mode (`EMAIL_SENDER=console`) logs the message and shows a banner.
+
+`POST /api/v1/supplier-replies` (JWT or `X-Job-Secret`) stores the raw body as DATA. Injection markers empty the extracted fields. Confirmed dates or delay days become a generic suggestion (`extra.action=update_po_expected_date`) that the owner must approve. A sent chase with no reply after `chase_followup_days` raises `chase_no_reply`.
+

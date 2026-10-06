@@ -5,6 +5,7 @@ import { Bot } from "lucide-react";
 
 import { ChatInput, SuggestedChips } from "@/components/inbox/chat-input";
 import { ChatThread } from "@/components/inbox/chat-thread";
+import { asString } from "@/lib/chat/card-data";
 import { useInboxSuggestions } from "@/lib/chat/suggestions";
 import { useChatSession } from "@/lib/chat/use-chat-session";
 
@@ -42,7 +43,8 @@ export function ChatPanel() {
           onRetry={() => void retryLast()}
           onSuggest={(card, status) => {
             setSuggestion(card.id, status);
-            setStatus(card.id, status);
+            const suggestionId = asString(card.data.suggestion_id);
+            setStatus(suggestionId || card.id, status);
           }}
           onRunPlan={() => void approvePlan("run")}
           onCancelPlan={() => void approvePlan("cancel")}

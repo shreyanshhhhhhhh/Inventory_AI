@@ -178,6 +178,16 @@ function patchStep(
   });
 }
 
+function suggestionStatusFor(
+  type: OrchestratorCardType,
+  data: Record<string, unknown>,
+): "pending" | "approved" | "rejected" | null {
+  if (type !== "po_suggestion" && type !== "email_draft") return null;
+  const explicit = asString(data.suggestion_status);
+  if (explicit === "approved" || explicit === "rejected") return explicit;
+  return "pending";
+}
+
 function appendToken(state: ChatUiState, text: string): ChatUiState {
   const current = assistantOf(state);
   if (!current || current.role !== "assistant" || !text) return state;
@@ -227,7 +237,7 @@ function appendCard(state: ChatUiState, event: ChatSseEvent): ChatUiState {
     status: asString(raw.status),
     message: asString(raw.message) ?? "",
     data,
-    suggestionStatus: type === "po_suggestion" || type === "email_draft" ? "pending" : null,
+    suggestionStatus: suggestionStatusFor(type, data),
   };
   return patchAssistant(state, {
     thinking: null,

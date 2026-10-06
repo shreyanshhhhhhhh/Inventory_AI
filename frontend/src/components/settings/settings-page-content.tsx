@@ -45,6 +45,7 @@ export function SettingsPageContent() {
     autoApproveBelow,
     exceptionScanEnabled,
     exceptionScanHourUtc,
+    chaseFollowupDays,
     isLoading,
     error,
     saveBusinessProfile,
@@ -68,6 +69,7 @@ export function SettingsPageContent() {
   const [autoApproveInput, setAutoApproveInput] = useState(autoApproveBelow);
   const [scanEnabled, setScanEnabled] = useState(exceptionScanEnabled);
   const [scanHour, setScanHour] = useState(String(exceptionScanHourUtc));
+  const [chaseDays, setChaseDays] = useState(String(chaseFollowupDays));
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -76,6 +78,7 @@ export function SettingsPageContent() {
     setAutoApproveInput(autoApproveBelow);
     setScanEnabled(exceptionScanEnabled);
     setScanHour(String(exceptionScanHourUtc));
+    setChaseDays(String(chaseFollowupDays));
     setLocationDrafts(
       Object.fromEntries(
         locations.map((location) => [
@@ -84,7 +87,7 @@ export function SettingsPageContent() {
         ]),
       ),
     );
-  }, [businessName, currencyCode, autoApproveBelow, exceptionScanEnabled, exceptionScanHourUtc, locations]);
+  }, [businessName, currencyCode, autoApproveBelow, exceptionScanEnabled, exceptionScanHourUtc, chaseFollowupDays, locations]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -107,6 +110,7 @@ export function SettingsPageContent() {
         autoApproveBelow: autoApproveInput.trim() === "" ? null : autoApproveInput.trim(),
         exceptionScanEnabled: scanEnabled,
         exceptionScanHourUtc: Number(scanHour),
+        chaseFollowupDays: Number(chaseDays),
       });
       toast.success("Settings saved");
     } catch (err) {
@@ -385,6 +389,16 @@ export function SettingsPageContent() {
               />
               <p className="text-xs text-muted-foreground">
                 Owners can also POST /api/v1/jobs/exception-scan, or a cron job can call it with X-Job-Secret.
+              </p>
+              <Label htmlFor="chase-days">Chase follow-up days</Label>
+              <Input
+                id="chase-days"
+                inputMode="numeric"
+                value={chaseDays}
+                onChange={(event) => setChaseDays(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                After a sent chase has no reply for this many days, the exception monitor raises a low-severity finding.
               </p>
             </div>
           </CardContent>

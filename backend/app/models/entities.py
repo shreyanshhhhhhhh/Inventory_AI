@@ -341,6 +341,7 @@ class AutonomyRules(IdMixin, TimestampMixin, Base):
     exception_scan_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     exception_scan_hour_utc: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     exception_scan_last_run_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    chase_followup_days: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
 
 
 class AuditLog(IdMixin, Base):
@@ -469,7 +470,7 @@ class InventoryException(IdMixin, TimestampMixin, Base):
     __table_args__ = (
         CheckConstraint(
             "exception_type IN ('stockout_risk', 'overstock', 'demand_spike', "
-            "'demand_drop', 'supplier_delay', 'data_anomaly')",
+            "'demand_drop', 'supplier_delay', 'data_anomaly', 'chase_no_reply')",
             name="exception_type_known",
         ),
         CheckConstraint(
@@ -542,6 +543,80 @@ class ConversationMessage(IdMixin, Base):
         ForeignKey("agent_runs.id", ondelete="RESTRICT"),
         nullable=True,
     )
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class SupplierMessage(IdMixin, TimestampMixin, Base):
+    __tablename__ = "supplier_messages"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('order', 'chase', 'expedite', 'delay-notice')",
+            name="supplier_message_kind_known",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'approved', 'sent', 'failed', 'rejected')",
+            name="supplier_message_status_known",
+        ),
+        Index("ix_supplier_messages_business_id", "business_id"),
+        Index("ix_supplier_messages_thread_id", "thread_id"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    supplier_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    po_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("purchase_orders.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject: Mapped[str] = mapped_column(String(240), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    created_by: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    approved_by: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    thread_id: Mapped[str] = mapped_column(CHAR(36), nullable=False)
+    facts: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    suggestion_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_suggestions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
+
+class SupplierReply(IdMixin, Base):
+    __tablename__ = "supplier_replies"
+    __table_args__ = (Index("ix_supplier_replies_message_id", "message_id"),)
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    message_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("supplier_messages.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    received_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
 
 

@@ -25,7 +25,7 @@ CSV header: `sku`, `name`, `category`, `location`, `quantity`, `unit`, `reorder_
 | Catalog | Categories, products, archive, supplier links (cost, lead time, preferred flag). |
 | Inventory | On-hand by location, post a sale, adjustment, or transfer, movement history. |
 | Orders & Suppliers | Suppliers and purchase orders: draft, approved, sent, received, or cancelled. |
-| Agent Inbox | Chat with the orchestrator over SSE. Slash commands and free text, including compound requests. Write plans wait for Run / Edit / Cancel. Draft POs and emails appear as cards and on Approvals. |
+| Agent Inbox | Chat with the orchestrator over SSE. Slash commands and free text, including compound requests. Write plans wait for Run / Edit / Cancel. `/reorder` lists what to buy. `/draft-po <supplier>` stores a purchase suggestion. Approving it creates a draft purchase order. `/email <supplier> <order|chase|expedite|delay-notice>` stores an email draft. Approve and Send, Save draft, or Reject. Nothing is delivered until the owner approves. |
 | Insights | Demand forecast per SKU for the next 14 days, from `sale` movements, plus movement and top-seller charts. Forecasting does not create a purchase order. |
 | Accounts (lite) | Profile, password change, and the team list. This is not a general ledger. |
 | Settings | Business name and locations. Currency is shown and not editable. Owners also set the nightly exception scan hour. |
@@ -53,15 +53,15 @@ Inventory value on Home is on-hand times the preferred supplier `unit_cost`. If 
 
 ## Chat orchestrator
 
-`POST /api/v1/chat/runs` accepts slash commands and free text, including compound requests. The Agent Inbox chat UI streams SSE events, shows a thinking bubble then a plan checklist, and hydrates the agent timeline from `GET /api/v1/chat/runs/{id}`. `/stock` and `/forecast` return live stock tables and demand charts from the forecast agent. `/scan` runs detectors in code and lists findings with playbook actions. Write plans wait for Run / Edit / Cancel. Draft POs and emails appear as cards, on Approvals, and in the Home pending count. See [ORCHESTRATOR.md](ORCHESTRATOR.md).
+`POST /api/v1/chat/runs` accepts slash commands and free text, including compound requests. The Agent Inbox chat UI streams SSE events, shows a thinking bubble then a plan checklist, and hydrates the agent timeline from `GET /api/v1/chat/runs/{id}`. `/stock` and `/forecast` return live stock tables and demand charts from the forecast agent. `/scan` runs detectors in code and lists findings with playbook actions. `/reorder` returns reorder lines from the replenishment service. `/draft-po <supplier>` pauses for plan approval, then stores a guarded purchase suggestion. `/email <supplier> chase` pauses, then stores a grounded email draft. The owner approves or rejects purchase suggestions from the card or Approvals. Email cards let the owner edit subject and body, then Approve and Send, Save draft, or Reject. Approval of a purchase suggestion creates a draft purchase order. Sending email uses `EmailSender` (console in dev). Write plans wait for Run / Edit / Cancel. See [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
-## Future daily agent workflow
+## Daily agent workflow
 
-**Not Phase 1.** Do not implement this until Phase 3 and later.
+The exception monitor, replenishment agent, and supplier communication agent propose. They do not place a purchase order, send email, or post stock on their own. The owner accepts or rejects a purchase suggestion in Agent Inbox. Acceptance creates a draft purchase order through the purchase-order service. A supplier email is sent only after Approve and Send. The draft, the decision, and the send are `audit_log` rows. A scheduled run of every agent and any ledger post from an agent are still ahead.
 
-1. **Trigger.** A schedule or a manual "run agents" action.
-2. **Detect.** Low stock, forecasted stockout, overdue purchase orders, receive mismatches.
-3. **Agents act.** The procurement and exception agents call the same service functions the UI uses. They propose actions. They do not commit purchasing on their own.
-4. **Approval inbox.** The owner accepts or rejects each proposal in Agent Inbox.
-5. **Execute.** Acceptance runs the purchase-order or ledger service.
-6. **Audit log.** The proposal, the human decision, and the resulting write are all `audit_log` rows.
+1. **Trigger.** A schedule or a manual "run agents" action. `/reorder` and `/draft-po` are the manual path today. Nightly exception scans are separate.
+2. **Detect.** Low stock, forecasted stockout, overdue purchase orders, receive mismatches. The exception monitor covers the detectors in [ORCHESTRATOR.md](ORCHESTRATOR.md).
+3. **Agents act.** Replenishment copies quantities and costs from services and may store a purchase suggestion. It does not commit purchasing on its own.
+4. **Approval inbox.** The owner accepts or rejects each purchase suggestion. Email drafts wait for Approve and Send, Save draft, or Reject.
+5. **Execute.** Acceptance of a purchase suggestion creates a draft purchase order. Approve and send stay on the Orders screen. Email send uses `EmailSender` after owner approval.
+6. **Audit log.** The proposal, the human decision, the draft, and the send are `audit_log` rows. Accept and reject history also stays on the suggestion payload for later evaluation.

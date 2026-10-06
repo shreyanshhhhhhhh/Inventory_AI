@@ -631,6 +631,7 @@ export const api = {
         auto_approve_below_amount: string | null;
         exception_scan_enabled?: boolean;
         exception_scan_hour_utc?: number;
+        chase_followup_days?: number;
       }): Promise<ApiAutonomyRules> {
         return request<ApiAutonomyRules>(`${API_V1}/settings/autonomy-rules`, {
           method: "PATCH",

@@ -289,6 +289,7 @@ export type ApiAutonomyRules = {
   exception_scan_enabled: boolean;
   exception_scan_hour_utc: number;
   exception_scan_last_run_on: string | null;
+  chase_followup_days: number;
 };
 
 export type ApiDemoSeedResult = {

@@ -105,6 +105,7 @@ class AutonomyRulesResponse(BaseModel):
     exception_scan_enabled: bool = True
     exception_scan_hour_utc: int = 2
     exception_scan_last_run_on: date | None = None
+    chase_followup_days: int = 3
 
     @field_serializer("auto_approve_below_amount")
     def serialize_amount(self, value: Decimal | None) -> str | None:
@@ -115,3 +116,4 @@ class AutonomyRulesUpdateRequest(BaseModel):
     auto_approve_below_amount: Decimal | None = None
     exception_scan_enabled: bool | None = None
     exception_scan_hour_utc: int | None = Field(default=None, ge=0, le=23)
+    chase_followup_days: int | None = Field(default=None, ge=1, le=90)

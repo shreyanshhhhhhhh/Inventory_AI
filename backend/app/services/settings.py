@@ -43,6 +43,7 @@ def _autonomy_rules_data(rules: AutonomyRules) -> dict[str, object]:
         "exception_scan_enabled": rules.exception_scan_enabled,
         "exception_scan_hour_utc": rules.exception_scan_hour_utc,
         "exception_scan_last_run_on": rules.exception_scan_last_run_on,
+        "chase_followup_days": rules.chase_followup_days,
     }
 
 
@@ -54,6 +55,7 @@ def _autonomy_audit_data(rules: AutonomyRules) -> dict[str, object]:
         "exception_scan_enabled": rules.exception_scan_enabled,
         "exception_scan_hour_utc": rules.exception_scan_hour_utc,
         "exception_scan_last_run_on": last_run.isoformat() if last_run is not None else None,
+        "chase_followup_days": rules.chase_followup_days,
     }
 
 
@@ -262,6 +264,7 @@ def _get_or_create_autonomy_rules(session: Session, business_id: str) -> Autonom
         exception_scan_enabled=True,
         exception_scan_hour_utc=2,
         exception_scan_last_run_on=None,
+        chase_followup_days=3,
     )
     session.add(rules)
     session.flush()
@@ -281,11 +284,14 @@ def update_autonomy_rules(
     auto_approve_below_amount: Decimal | None,
     exception_scan_enabled: bool | None = None,
     exception_scan_hour_utc: int | None = None,
+    chase_followup_days: int | None = None,
 ) -> dict[str, object]:
     if exception_scan_hour_utc is not None and (
         exception_scan_hour_utc < 0 or exception_scan_hour_utc > 23
     ):
         raise SettingsError("Scan hour must be between 0 and 23 UTC.")
+    if chase_followup_days is not None and chase_followup_days < 1:
+        raise SettingsError("Chase follow-up days must be at least 1.")
     rules = _get_or_create_autonomy_rules(session, business_id)
     before = _autonomy_audit_data(rules)
     rules.auto_approve_below_amount = auto_approve_below_amount
@@ -293,6 +299,8 @@ def update_autonomy_rules(
         rules.exception_scan_enabled = exception_scan_enabled
     if exception_scan_hour_utc is not None:
         rules.exception_scan_hour_utc = exception_scan_hour_utc
+    if chase_followup_days is not None:
+        rules.chase_followup_days = chase_followup_days
     session.flush()
     after = _autonomy_audit_data(rules)
     log_action(

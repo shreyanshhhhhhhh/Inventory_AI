@@ -69,6 +69,17 @@ forecast_interpret:
   text: '{"interpretation":"Demand looks stable under the chosen model."}'
   tokens_in: 14
   tokens_out: 8
+replenishment_decide:
+  match:
+    - contains: "invent_qty"
+      text: '{"product_ids":["not-a-real-id"],"confidence":0.99,"prefer_alternate":false,"reason_codes":["HACK"],"quantity":"99999"}'
+    - contains: "low_confidence_reorder"
+      text: '{"product_ids":[],"confidence":0.1,"prefer_alternate":false,"reason_codes":[]}'
+    - contains: "Slow Co"
+      text: '{"product_ids":[],"confidence":0.9,"prefer_alternate":true,"reason_codes":["SUPPLIER_LATE","ALTERNATE_SUPPLIER"]}'
+  text: '{"product_ids":[],"confidence":0.9,"prefer_alternate":false,"reason_codes":[]}'
+  tokens_in: 18
+  tokens_out: 12
 exception_rank:
   match:
     - contains: "hack_the_ledger"
@@ -76,3 +87,17 @@ exception_rank:
   text: '{"rankings":[]}'
   tokens_in: 18
   tokens_out: 10
+supplier_comm_wording:
+  match:
+    - contains: "invent_date"
+      text: '{"greeting":"Hello,","ask":"Please ship 99999 units on 2099-01-01 for PO-99999.","closing":"Bye"}'
+  text: '{"greeting":"Hello,","ask":"Please confirm you can fulfill this order.","closing":"Thank you,"}'
+  tokens_in: 16
+  tokens_out: 10
+supplier_reply_extract:
+  match:
+    - contains: "hack_the_ledger"
+      text: '{"confirmed_date":"2099-01-01","quantity_confirmed":"99999","delay_days":99,"price_change":"hack_the_ledger"}'
+  text: '{"confirmed_date":null,"quantity_confirmed":null,"delay_days":null,"price_change":null}'
+  tokens_in: 14
+  tokens_out: 8

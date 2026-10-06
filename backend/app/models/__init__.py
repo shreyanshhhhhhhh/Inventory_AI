@@ -19,6 +19,8 @@ from app.models.entities import (
     RefreshToken,
     StockMovement,
     Supplier,
+    SupplierMessage,
+    SupplierReply,
     User,
 )
 from app.db import Base
@@ -43,5 +45,7 @@ __all__ = [
     "RefreshToken",
     "StockMovement",
     "Supplier",
+    "SupplierMessage",
+    "SupplierReply",
     "User",
 ]

@@ -57,6 +57,42 @@ export const chatApi = {
       body: JSON.stringify(body),
     });
   },
+  approveSuggestion(suggestionId: string): Promise<{ id: string; status: string }> {
+    return chatRequest(`${API_V1}/suggestions/${suggestionId}/approve`, { method: "POST" });
+  },
+  rejectSuggestion(suggestionId: string, reason: string): Promise<{ id: string; status: string }> {
+    return chatRequest(`${API_V1}/suggestions/${suggestionId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  },
+  getEmailSenderStatus(): Promise<{ mode: string; console_mode: boolean; banner: string | null }> {
+    return chatRequest(`${API_V1}/supplier-messages/sender-status`);
+  },
+  saveSupplierDraft(
+    messageId: string,
+    body: { subject: string; body: string },
+  ): Promise<{ id: string; status: string }> {
+    return chatRequest(`${API_V1}/supplier-messages/${messageId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+  },
+  sendSupplierMessage(
+    messageId: string,
+    body: { subject?: string; body?: string },
+  ): Promise<{ id: string; status: string }> {
+    return chatRequest(`${API_V1}/supplier-messages/${messageId}/send`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+  },
+  rejectSupplierMessage(messageId: string, reason: string): Promise<{ id: string; status: string }> {
+    return chatRequest(`${API_V1}/supplier-messages/${messageId}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    });
+  },
 };
 
 export async function streamChatEvents(

@@ -19,12 +19,14 @@ from app.services import exceptions as exception_service
 from app.services import supplier_reliability as reliability_service
 from app.services.detectors import (
     DEFAULT_LEAD_TIME_DAYS,
+    ChaseFollowupSnapshot,
     DemandSnapshot,
     DetectorFinding,
     MovementSnapshot,
     ProductCoverSnapshot,
     PurchaseOrderSnapshot,
     SupplierReliabilitySnapshot,
+    detect_chase_no_reply,
     detect_data_anomaly,
     detect_demand_shift,
     detect_overstock,
@@ -35,6 +37,7 @@ from app.services.forecast import get_history, list_forecasts
 from app.services.inventory import get_stock_levels
 from app.services.purchase_orders import list_pos
 from app.services.settings import get_autonomy_rules, mark_exception_scan_run
+from app.services.supplier_messages import list_unanswered_chases
 
 _ZERO = Decimal("0")
 
@@ -155,7 +158,7 @@ def _run_detectors(
     business_id: str,
 ) -> tuple[list[DetectorFinding], dict[str, PlaybookContext]]:
     today = utcnow().date()
-    cover_rows, demand_rows, orders, suppliers, movements, forecast_map, contexts = _snapshots(
+    cover_rows, demand_rows, orders, suppliers, movements, forecast_map, chases, contexts = _snapshots(
         session,
         business_id=business_id,
         today=today,
@@ -166,6 +169,7 @@ def _run_detectors(
     findings.extend(detect_demand_shift(demand_rows))
     findings.extend(detect_supplier_delay(orders, suppliers, today=today))
     findings.extend(detect_data_anomaly(cover_rows, movements, forecast_map))
+    findings.extend(detect_chase_no_reply(chases))
     return findings, contexts
 
 
@@ -181,6 +185,7 @@ def _snapshots(
     list[SupplierReliabilitySnapshot],
     list[MovementSnapshot],
     dict[str, Decimal],
+    list[ChaseFollowupSnapshot],
     dict[str, PlaybookContext],
 ]:
     products = list(
@@ -384,7 +389,39 @@ def _snapshots(
                 other_location_is_low=False,
             ),
         )
-    return cover_rows, demand_rows, orders, suppliers, movements, forecast_map, contexts
+    rules = get_autonomy_rules(session, business_id=business_id)
+    followup_days = int(rules.get("chase_followup_days") or 3)
+    unanswered = list_unanswered_chases(
+        session,
+        business_id=business_id,
+        older_than_days=followup_days,
+    )
+    chases: list[ChaseFollowupSnapshot] = []
+    for message in unanswered:
+        supplier = next((item for item in suppliers if item.supplier_id == message.supplier_id), None)
+        sent_at = message.sent_at or utcnow()
+        days_waiting = max(0, (today - sent_at.date()).days)
+        po_number = ""
+        if isinstance(message.facts, dict):
+            po_number = str(message.facts.get("po_number") or "")
+        chases.append(
+            ChaseFollowupSnapshot(
+                message_id=message.id,
+                supplier_id=message.supplier_id,
+                supplier_name=supplier.supplier_name if supplier else "",
+                po_id=message.po_id,
+                po_number=po_number,
+                sent_at=sent_at,
+                days_waiting=days_waiting,
+            )
+        )
+        contexts[f"chase_no_reply:{message.id}"] = PlaybookContext(
+            supplier_count=1,
+            has_open_po=message.po_id is not None,
+            other_location_has_stock=False,
+            other_location_is_low=False,
+        )
+    return cover_rows, demand_rows, orders, suppliers, movements, forecast_map, chases, contexts
 
 
 def _lead_time(links: list[ProductSupplier]) -> int:

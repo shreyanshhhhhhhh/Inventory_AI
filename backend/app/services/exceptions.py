@@ -15,6 +15,23 @@ class ExceptionError(Exception):
         super().__init__(message)
 
 
+def get_exception(
+    session: Session,
+    *,
+    business_id: str,
+    exception_id: str,
+) -> dict[str, object]:
+    row = session.scalar(
+        select(InventoryException).where(
+            InventoryException.business_id == business_id,
+            InventoryException.id == exception_id,
+        )
+    )
+    if row is None:
+        raise ExceptionError("Exception not found.", status_code=404, code="not_found")
+    return _payload(row)
+
+
 def get_open_by_dedupe(
     session: Session,
     *,

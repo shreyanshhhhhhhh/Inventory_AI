@@ -60,7 +60,7 @@ flowchart TB
 | Models | One SQLAlchemy mapping shared by SQLite and PostgreSQL. |
 | Alembic | Migrations for both databases. No database-specific types. |
 
-Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 adds the LLM gateway, prompts, tools, `BaseAgent`, the chat orchestrator, the Agent Inbox chat UI, the forecast agent, and the exception monitor. Filled-in procurement agents are later.
+Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 adds the LLM gateway, prompts, tools, `BaseAgent`, the chat orchestrator, the Agent Inbox chat UI, the forecast agent, the exception monitor, replenishment, the purchase guardrail, and supplier communication. Explainer and data-quality agents are later.
 
 ## LLM layer
 
@@ -133,4 +133,4 @@ Local dev uses `DATABASE_URL` pointing at a SQLite file. Deploy points the same 
 4. **Money uses Decimal, never float.** Columns are `Numeric(18, 4)`. Python values are `decimal.Decimal`. JSON encodes them as strings.
 5. **One model set for SQLite and PostgreSQL.** Use `Numeric` for money and quantity, `CHAR(36)` for ids (app-generated UUID strings), `VARCHAR` plus `CHECK` for enums, and `JSON` for audit payloads. No PostgreSQL-only column types and no float columns.
 6. **Tenant scope comes from the token.** Repository reads and writes for business data filter on `business_id` from the JWT. The client's body does not choose the tenant.
-7. **LLM foundation is isolated.** Tests use the fake provider. Write tools only create `agent_suggestions`. The forecast service and replenishment math stay in Python. Orchestrator plans are validated in code. LangGraph stores run state on `agent_runs`, not checkpoint tables.
+7. **LLM foundation is isolated.** Tests use the fake provider. Write tools only create `agent_suggestions`. Purchase suggestions pass `validate_po_proposal` before insert. The forecast service and replenishment math stay in Python. Orchestrator plans are validated in code. LangGraph stores run state on `agent_runs`, not checkpoint tables.

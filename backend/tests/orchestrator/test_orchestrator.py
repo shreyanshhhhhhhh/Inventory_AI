@@ -102,6 +102,7 @@ def test_failed_step_skips_dependents_only(db) -> None:
         role="owner",
         run_id=run.id,
     )
+    db.commit()
     plan = Plan(
         [
             PlanStep(
@@ -139,7 +140,7 @@ def test_failed_step_skips_dependents_only(db) -> None:
         is_cancelled=lambda: False,
     )
     assert results["s1"].status == "failed"
-    assert results["s2"].status == "not_implemented"
+    assert results["s2"].status == "ok"
     assert results["s3"].status == "skipped"
 
 
@@ -158,6 +159,7 @@ def test_parallel_steps_run_concurrently(db) -> None:
         role="owner",
         run_id=run.id,
     )
+    db.commit()
     plan = Plan(
         [
             PlanStep(
@@ -189,7 +191,7 @@ def test_parallel_steps_run_concurrently(db) -> None:
     )
     elapsed = time.perf_counter() - started
     assert results["s1"].status == "not_implemented"
-    assert results["s2"].status == "not_implemented"
+    assert results["s2"].status == "ok"
     assert elapsed < 0.55
 
 

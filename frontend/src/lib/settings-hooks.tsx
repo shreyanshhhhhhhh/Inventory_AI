@@ -37,6 +37,7 @@ interface SettingsContextValue {
   autoApproveBelow: string;
   exceptionScanEnabled: boolean;
   exceptionScanHourUtc: number;
+  chaseFollowupDays: number;
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -64,6 +65,7 @@ interface SettingsContextValue {
     autoApproveBelow: string | null;
     exceptionScanEnabled: boolean;
     exceptionScanHourUtc: number;
+    chaseFollowupDays: number;
   }) => Promise<void>;
 }
 
@@ -80,6 +82,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [autoApproveBelow, setAutoApproveBelow] = useState("");
   const [exceptionScanEnabled, setExceptionScanEnabled] = useState(true);
   const [exceptionScanHourUtc, setExceptionScanHourUtc] = useState(2);
+  const [chaseFollowupDays, setChaseFollowupDays] = useState(3);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,6 +130,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       setAutoApproveBelow(autonomy.auto_approve_below_amount ?? "");
       setExceptionScanEnabled(autonomy.exception_scan_enabled);
       setExceptionScanHourUtc(autonomy.exception_scan_hour_utc);
+      setChaseFollowupDays(autonomy.chase_followup_days ?? 3);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load settings.");
     } finally {
@@ -214,11 +218,13 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       autoApproveBelow: string | null;
       exceptionScanEnabled: boolean;
       exceptionScanHourUtc: number;
+      chaseFollowupDays: number;
     }) => {
       await api.settings.autonomyRules.update({
         auto_approve_below_amount: input.autoApproveBelow,
         exception_scan_enabled: input.exceptionScanEnabled,
         exception_scan_hour_utc: input.exceptionScanHourUtc,
+        chase_followup_days: input.chaseFollowupDays,
       });
       await refresh();
     },
@@ -235,6 +241,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       autoApproveBelow,
       exceptionScanEnabled,
       exceptionScanHourUtc,
+      chaseFollowupDays,
       isLoading,
       error,
       refresh,
@@ -255,6 +262,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       autoApproveBelow,
       exceptionScanEnabled,
       exceptionScanHourUtc,
+      chaseFollowupDays,
       isLoading,
       error,
       refresh,

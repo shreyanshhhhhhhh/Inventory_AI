@@ -87,6 +87,9 @@ PLAYBOOKS: dict[str, list[tuple[str, Precondition]]] = {
         ("count_stock", _always),
         ("ignore", _always),
     ],
+    "chase_no_reply": [
+        ("ignore", _always),
+    ],
 }
 
 

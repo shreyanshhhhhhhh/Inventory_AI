@@ -1,6 +1,6 @@
 # Data model
 
-Phase 1 schema, plus a computed Phase 2 demand forecast, the Phase 3 AI foundation tables (`agent_runs`, `agent_steps`, `agent_suggestions`, `llm_usage_counters`), orchestrator columns on `agent_runs`, `chat_messages`, and `exceptions`. No forecast table, no LangGraph checkpoint tables, and no inbox UI tables.
+Phase 1 schema, plus a computed Phase 2 demand forecast, the Phase 3 AI foundation tables (`agent_runs`, `agent_steps`, `agent_suggestions`, `llm_usage_counters`), orchestrator columns on `agent_runs`, `chat_messages`, `exceptions`, `supplier_messages`, and `supplier_replies`. No forecast table, no LangGraph checkpoint tables, and no inbox UI tables.
 
 **Multi-tenant assumption:** a user belongs to one business. Almost every row is scoped by `business_id`. The API takes `business_id` from the JWT, not from the client. Exception: `refresh_tokens` hang off `users`. Signup creates the business and the owner together, so `users.business_id` is set immediately. The column stays nullable. `onboarding_completed_at` stays null until the onboarding wizard, which is not part of signup.
 
@@ -128,10 +128,11 @@ One business per user in Phase 1. No currency table.
 | --- | --- | --- |
 | id | CHAR(36) | PK |
 | business_id | CHAR(36) | FK, unique — one row per business |
-| auto_approve_below_amount | NUMERIC(18, 4) NULL | Stored for a later auto-approve path |
+| auto_approve_below_amount | NUMERIC(18, 4) NULL | When set, a guarded purchase suggestion whose total is strictly below this amount is auto-approved into a draft PO. Null means always ask the owner |
 | exception_scan_enabled | BOOLEAN | Default true. Owner can turn off nightly scans |
 | exception_scan_hour_utc | INTEGER | Default 2. Hour in UTC for the scheduled scan |
 | exception_scan_last_run_on | DATE NULL | UTC date of the last completed scan |
+| chase_followup_days | INTEGER | Default 3. Sent chases with no reply after this many days raise `chase_no_reply` |
 | created_at | datetime | |
 | updated_at | datetime | |
 
@@ -359,7 +360,7 @@ Append-only. Every LLM call and every tool call.
 
 ## agent_suggestions
 
-The only write target for agent tools in this foundation. Tools never create purchase orders, send email, or post stock.
+The only write target for agent tools. Tools never create purchase orders, send email, or post stock. Approving a `draft_po` suggestion is a separate owner action that creates a draft purchase order.
 
 | Column | Type | Notes |
 | --- | --- | --- |
@@ -367,8 +368,8 @@ The only write target for agent tools in this foundation. Tools never create pur
 | business_id | CHAR(36) | FK |
 | run_id | CHAR(36) | FK agent_runs |
 | suggestion_type | VARCHAR(32) | `generic`, `draft_po`, `draft_email` |
-| status | VARCHAR(20) | `pending` on create. Later inbox phases may set `approved`, `rejected`, `dismissed` |
-| payload | JSON | Lines, supplier, email draft, or a free-form summary |
+| status | VARCHAR(20) | `pending` on create. Owner approve/reject sets `approved` or `rejected`. `dismissed` is reserved |
+| payload | JSON | Lines, supplier, evidence, reason codes, confidence, caveats, guardrail result, and `decisions` (`action`, `reason`, `actor_user_id`, `at`, `purchase_order_id`) |
 | created_at | datetime | |
 
 ## exceptions
@@ -379,7 +380,7 @@ Open findings from the exception monitor. Dedupe is unique among **open** rows p
 | --- | --- | --- |
 | id | CHAR(36) | PK |
 | business_id | CHAR(36) | FK |
-| exception_type | VARCHAR(40) | `stockout_risk`, `overstock`, `demand_spike`, `demand_drop`, `supplier_delay`, `data_anomaly` |
+| exception_type | VARCHAR(40) | `stockout_risk`, `overstock`, `demand_spike`, `demand_drop`, `supplier_delay`, `data_anomaly`, `chase_no_reply` |
 | severity | VARCHAR(20) | `low`, `medium`, `high`, `critical` |
 | status | VARCHAR(20) | `open`, `resolved`, `ignored` |
 | entity_type | VARCHAR(80) | `product`, `purchase_order`, `supplier`, `stock_movement` |
@@ -425,6 +426,43 @@ Recent turns for orchestrator context. Scoped by `business_id` and `user_id`.
 | created_at | datetime | |
 
 The orchestrator loads the last `ORCHESTRATOR_CHAT_HISTORY` rows (default 6) as DATA. Names in that text are resolved to ids in code.
+
+## supplier_messages
+
+Canonical supplier email drafts. The agent tool inserts `status=draft` and a matching `agent_suggestions` row. Sending uses `EmailSender` only after the owner approves.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| supplier_id | CHAR(36) | FK |
+| po_id | CHAR(36) NULL | FK purchase_orders |
+| kind | VARCHAR(32) | `order`, `chase`, `expedite`, `delay-notice` |
+| subject | VARCHAR(240) | Template subject with the PO number filled in code |
+| body | TEXT | Template body. LLM fills greeting/ask/closing only |
+| status | VARCHAR(20) | `draft`, `approved`, `sent`, `failed`, `rejected` |
+| created_by | CHAR(36) | FK users |
+| approved_by | CHAR(36) NULL | FK users. Set on owner send |
+| sent_at | datetime NULL | Set when `EmailSender.send` succeeds |
+| thread_id | CHAR(36) | Groups later replies |
+| facts | JSON | PO numbers, quantities, and dates used for grounding |
+| suggestion_id | CHAR(36) NULL | FK agent_suggestions |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+## supplier_replies
+
+Inbound paste or webhook text. The body is untrusted DATA. Extracted fields never send mail or change a PO by themselves.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK. Tenant isolation |
+| message_id | CHAR(36) | FK supplier_messages |
+| received_at | datetime | |
+| body | TEXT | Raw reply |
+| parsed | JSON | `confirmed_date`, `quantity_confirmed`, `delay_days`, `price_change`, `ignored_injection` |
+| created_at | datetime | |
 
 ## Tenant and delete rules
 

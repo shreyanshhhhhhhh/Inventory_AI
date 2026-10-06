@@ -21,6 +21,9 @@ from app.routers import (
     onboarding,
     purchase_orders,
     sales,
+    suggestions,
+    supplier_messages,
+    supplier_replies,
 )
 from app.routers import settings as settings_router
 
@@ -61,4 +64,7 @@ api_v1.include_router(sales.router)
 api_v1.include_router(onboarding.router)
 api_v1.include_router(chat.router)
 api_v1.include_router(jobs.router)
+api_v1.include_router(suggestions.router)
+api_v1.include_router(supplier_messages.router)
+api_v1.include_router(supplier_replies.router)
 app.include_router(api_v1)

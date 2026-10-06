@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,6 +37,17 @@ class Settings(BaseSettings):
     orchestrator_chat_history: int = 6
     job_secret: str | None = None
     exception_scan_scheduler_enabled: bool = False
+    po_max_line_quantity: int = 1000
+    po_max_lines: int = 40
+    po_max_total: Decimal = Decimal("50000")
+    po_cost_tolerance_ratio: Decimal = Decimal("0.01")
+    email_sender: str = "console"
+    email_from: str | None = None
+    email_smtp_host: str | None = None
+    email_smtp_port: int = 587
+    email_smtp_user: str | None = None
+    email_smtp_password: str | None = None
+    email_smtp_tls: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

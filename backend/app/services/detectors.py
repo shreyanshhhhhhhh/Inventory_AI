@@ -28,6 +28,7 @@ EXCEPTION_TYPES = (
     "demand_drop",
     "supplier_delay",
     "data_anomaly",
+    "chase_no_reply",
 )
 SEVERITIES = ("low", "medium", "high", "critical")
 
@@ -81,6 +82,17 @@ class SupplierReliabilitySnapshot:
     supplier_name: str
     reliability_score: float
     overdue_count: int
+
+
+@dataclass(frozen=True)
+class ChaseFollowupSnapshot:
+    message_id: str
+    supplier_id: str
+    supplier_name: str
+    po_id: str | None
+    po_number: str
+    sent_at: datetime
+    days_waiting: int
 
 
 @dataclass(frozen=True)
@@ -310,6 +322,31 @@ def detect_data_anomaly(
             )
     findings.extend(_duplicate_sales(movements))
     findings.extend(_unreconciled_adjustments(movements, forecast_units_by_product))
+    return findings
+
+
+def detect_chase_no_reply(rows: list[ChaseFollowupSnapshot]) -> list[DetectorFinding]:
+    findings: list[DetectorFinding] = []
+    for row in rows:
+        findings.append(
+            DetectorFinding(
+                exception_type="chase_no_reply",
+                severity="low",
+                title=f"No reply to chase for {row.po_number or row.supplier_name}",
+                entity_type="supplier_message",
+                entity_id=row.message_id,
+                dedupe_key=f"chase_no_reply:{row.message_id}",
+                evidence={
+                    "message_id": row.message_id,
+                    "supplier_id": row.supplier_id,
+                    "supplier_name": row.supplier_name,
+                    "po_id": row.po_id,
+                    "po_number": row.po_number,
+                    "sent_at": row.sent_at.isoformat(),
+                    "days_waiting": row.days_waiting,
+                },
+            )
+        )
     return findings
 
 

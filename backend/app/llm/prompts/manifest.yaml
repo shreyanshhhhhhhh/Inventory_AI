@@ -29,3 +29,12 @@ prompts:
   exception_rank:
     file: v1/exception_rank.prompt.md
     version: "1"
+  replenishment_decide:
+    file: v1/replenishment_decide.prompt.md
+    version: "1"
+  supplier_comm_wording:
+    file: v1/supplier_comm_wording.prompt.md
+    version: "1"
+  supplier_reply_extract:
+    file: v1/supplier_reply_extract.prompt.md
+    version: "1"

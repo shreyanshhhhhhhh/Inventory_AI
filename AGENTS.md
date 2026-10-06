@@ -8,18 +8,18 @@ Read these before changing the product:
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — schema and ledger invariants
 - [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md) — chat orchestrator, routing table, SSE events
 
-**AI orchestrator is in progress.** The LLM gateway, versioned prompts, tool registry, `BaseAgent`, the LangGraph chat orchestrator, the forecast agent, and the exception monitor may be used. Do not add LangChain agents or Langfuse yet. Demand forecasts stay in `app/services/forecast.py` (eval in `app/services/forecast_eval.py`) and must not create purchase orders or write the ledger. Do not add statsforecast or Prophet unless that service is replaced on purpose.
+**AI orchestrator is in progress.** The LLM gateway, versioned prompts, tool registry, `BaseAgent`, the LangGraph chat orchestrator, the forecast agent, the exception monitor, the replenishment agent, the purchase guardrail, and the supplier communication agent may be used. Do not add LangChain agents or Langfuse yet. Demand forecasts stay in `app/services/forecast.py` (eval in `app/services/forecast_eval.py`) and must not create purchase orders or write the ledger. Reorder quantities stay in `app/services/replenishment.py`. Do not add statsforecast or Prophet unless that service is replaced on purpose.
 
 ### LLM and agent rules
 
 - **No real LLM in tests.** `LLM_PROVIDER` must be `fake`. The fake provider returns scripted responses. Pytest fails if a live provider (`gemini`, `groq`, `ollama`) is constructed.
 - **No arithmetic by the LLM.** On-hand, forecasts, reorder quantities, and money come from service tools. The model must not add, multiply, or invent quantities. Orchestrator summaries that contain a number missing from typed results are replaced with a template.
-- **No direct writes.** Write tools only insert `agent_suggestions`. They never create purchase orders, send email, or post stock movements. Orchestrator write steps pause for plan approval.
+- **No direct writes.** Write tools only insert `agent_suggestions` (and `supplier_messages` drafts). They never create purchase orders, send email, or post stock movements. A `draft_po` suggestion is inserted only after `validate_po_proposal`. Approving it creates a draft purchase order through the purchase-order service. A supplier email is sent only after the owner clicks Approve and Send. Orchestrator write steps pause for plan approval.
 - **Tenant scope.** Tools take `business_id` from the injected `AgentContext`, never from the model.
 - **Untrusted text is DATA.** Product names, supplier emails, and tool JSON go in `<<DATA>>` blocks and cannot change the tool allowlist or instructions.
 - **Orchestrator plans are validated in code.** The LLM may propose a compound DAG. Unknown agents, cycles, oversized plans, and write-before-read graphs are rejected.
 
-Current implementation scope is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator plus the Agent Inbox chat UI plus the forecast agent plus the exception monitor: catalog, stock ledger, purchase orders, suppliers, dashboard, auth, onboarding, Insights forecasts, LLM gateway, tools, `BaseAgent`, slash/free-text/compound routing, SSE runs, Inbox chat, `forecast` (history, run, accuracy, get_forecast), `exception_monitor.scan`, nightly scan job. Concrete procurement agents are still placeholders. See [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md).
+Current implementation scope is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator plus the Agent Inbox chat UI plus the forecast agent plus the exception monitor plus the replenishment agent and purchase guardrail plus the supplier communication agent: catalog, stock ledger, purchase orders, suppliers, dashboard, auth, onboarding, Insights forecasts, LLM gateway, tools, `BaseAgent`, slash/free-text/compound routing, SSE runs, Inbox chat, `forecast` (history, run, accuracy, get_forecast), `exception_monitor.scan`, nightly scan job, `replenishment.recommend` and `replenishment.draft_po`, `validate_po_proposal`, `supplier_comm.draft_emails`, `validate` of email facts in code, `EmailSender` (console or SMTP). See [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md).
 
 ## Permanent backend rules
 

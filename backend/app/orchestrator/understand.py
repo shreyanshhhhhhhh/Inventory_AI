@@ -40,10 +40,7 @@ def understand_message(
         if unknown:
             return _refusal(f"I do not recognize /{unknown[0]}.")
         intents = [
-            IntentItem(
-                intent=item.intent,
-                params={"query": item.remainder} if item.remainder else {},
-            )
+            IntentItem(intent=item.intent, params=_slash_params(item.intent, item.remainder))
             for item in slashes
         ]
         return _finalize(
@@ -97,6 +94,39 @@ def understand_message(
         confidence=parsed.confidence,
         ambiguous=False,
     )
+
+
+def _slash_params(intent: str, remainder: str) -> dict[str, object]:
+    text = remainder.strip()
+    if not text:
+        return {}
+    if intent == "draft_po":
+        return {"supplier_name": text, "query": text}
+    if intent == "draft_email":
+        return _email_slash_params(text)
+    return {"query": text}
+
+
+def _email_slash_params(text: str) -> dict[str, object]:
+    from app.services.supplier_email import EMAIL_KINDS, normalize_kind
+
+    kind_tokens = set(EMAIL_KINDS) | {"delay", "delaynotice", "delay_notice"}
+    kind: str | None = None
+    name_parts: list[str] = []
+    for token in text.split():
+        normalized = token.lower().replace("_", "-")
+        if normalized in kind_tokens or normalized.replace("-", "") == "delaynotice":
+            kind = normalize_kind(normalized)
+            continue
+        name_parts.append(token)
+    params: dict[str, object] = {}
+    if name_parts:
+        name = " ".join(name_parts)
+        params["supplier_name"] = name
+        params["query"] = name
+    if kind:
+        params["kind"] = kind
+    return params
 
 
 def _finalize(
