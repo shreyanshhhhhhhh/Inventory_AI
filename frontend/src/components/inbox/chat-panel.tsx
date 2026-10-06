@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 import { Bot } from "lucide-react";
 
 import { ChatInput, SuggestedChips } from "@/components/inbox/chat-input";
@@ -13,6 +14,8 @@ export function ChatPanel() {
   const { state, send, stop, retryLast, approvePlan, setSuggestion } = useChatSession();
   const { upsertFromCard, setStatus } = useInboxSuggestions();
   const running = Boolean(state.activeRunId) || state.sending;
+  const searchParams = useSearchParams();
+  const askedRef = useRef<string | null>(null);
 
   useEffect(() => {
     for (const message of state.messages) {
@@ -22,6 +25,13 @@ export function ChatPanel() {
       }
     }
   }, [state.messages, upsertFromCard]);
+
+  useEffect(() => {
+    const ask = searchParams.get("ask")?.trim();
+    if (!ask || askedRef.current === ask || running) return;
+    askedRef.current = ask;
+    void send(ask);
+  }, [running, searchParams, send]);
 
   return (
     <div className="flex min-h-[min(70vh,720px)] flex-col gap-3 overflow-hidden">
@@ -46,6 +56,7 @@ export function ChatPanel() {
             const suggestionId = asString(card.data.suggestion_id);
             setStatus(suggestionId || card.id, status);
           }}
+          onAskWhy={(value) => void send(value)}
           onRunPlan={() => void approvePlan("run")}
           onCancelPlan={() => void approvePlan("cancel")}
           onEditPlan={(plan) => void approvePlan("edit", plan)}

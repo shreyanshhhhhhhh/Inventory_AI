@@ -60,7 +60,7 @@ flowchart TB
 | Models | One SQLAlchemy mapping shared by SQLite and PostgreSQL. |
 | Alembic | Migrations for both databases. No database-specific types. |
 
-Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 adds the LLM gateway, prompts, tools, `BaseAgent`, the chat orchestrator, the Agent Inbox chat UI, the forecast agent, the exception monitor, replenishment, the purchase guardrail, and supplier communication. Explainer and data-quality agents are later.
+Phase 1 modules: auth, onboarding, catalog, inventory, purchase orders, suppliers, dashboard reads, team, settings, audit read. Phase 2 adds the forecast read on Insights. Phase 3 adds the LLM gateway, prompts, tools, `BaseAgent`, the chat orchestrator, the Agent Inbox chat UI, the forecast agent, the exception monitor, replenishment, the purchase guardrail, supplier communication, and the explainer. The data-quality agent is later.
 
 ## LLM layer
 

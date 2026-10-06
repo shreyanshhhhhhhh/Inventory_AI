@@ -10,6 +10,8 @@ CARD_TYPES = (
     "exception_list",
     "po_suggestion",
     "email_draft",
+    "explanation",
+    "whatif_compare",
     "text",
     "clarification",
     "refusal",
@@ -22,6 +24,8 @@ CardType = Literal[
     "exception_list",
     "po_suggestion",
     "email_draft",
+    "explanation",
+    "whatif_compare",
     "text",
     "clarification",
     "refusal",
@@ -37,6 +41,7 @@ IntentName = Literal[
     "draft_po",
     "draft_email",
     "explain",
+    "whatif",
     "data_quality",
 ]
 

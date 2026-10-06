@@ -20,7 +20,8 @@ from app.orchestrator.types import IntentItem, UnderstandOutput
 
 REFUSAL_PREFIX = (
     "I can only help with inventory work in this shop: stock, forecasts, exception scans, "
-    "reorder suggestions, draft purchase orders, draft supplier emails, explanations, and data quality."
+    "reorder suggestions, draft purchase orders, draft supplier emails, explanations, what-if "
+    "scenarios, and data quality."
 )
 
 
@@ -104,7 +105,29 @@ def _slash_params(intent: str, remainder: str) -> dict[str, object]:
         return {"supplier_name": text, "query": text}
     if intent == "draft_email":
         return _email_slash_params(text)
+    if intent == "explain":
+        return _why_slash_params(text)
+    if intent == "whatif":
+        return {"query": text}
     return {"query": text}
+
+
+def _why_slash_params(text: str) -> dict[str, object]:
+    from app.services.explainer import parse_why_target
+
+    parsed = parse_why_target(text)
+    params: dict[str, object] = {"query": text}
+    if parsed["kind"]:
+        params["kind"] = parsed["kind"]
+    if parsed["target_id"]:
+        params["target_id"] = parsed["target_id"]
+        if parsed["kind"] == "suggestion":
+            params["suggestion_id"] = parsed["target_id"]
+        elif parsed["kind"] == "exception":
+            params["exception_id"] = parsed["target_id"]
+        elif parsed["kind"] == "po":
+            params["purchase_order_id"] = parsed["target_id"]
+    return params
 
 
 def _email_slash_params(text: str) -> dict[str, object]:
@@ -218,7 +241,8 @@ def _label(intent: str) -> str:
         "reorder": "Recommend reorder quantities",
         "draft_po": "Draft a purchase order suggestion",
         "draft_email": "Draft supplier emails",
-        "explain": "Explain the latest figures",
+        "explain": "Explain a suggestion, exception, or purchase order",
+        "whatif": "Compare a what-if scenario",
         "data_quality": "Check catalog data quality",
     }
     return labels.get(intent, intent)

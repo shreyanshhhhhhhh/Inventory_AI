@@ -32,6 +32,7 @@ export function ChatThread({
   onChoose,
   onRetry,
   onSuggest,
+  onAskWhy,
   onRunPlan,
   onCancelPlan,
   onEditPlan,
@@ -40,6 +41,7 @@ export function ChatThread({
   onChoose: (value: string) => void;
   onRetry: () => void;
   onSuggest: (card: OrchestratorCard, status: "approved" | "rejected") => void;
+  onAskWhy?: (value: string) => void;
   onRunPlan: () => void;
   onCancelPlan: () => void;
   onEditPlan: (plan: PlanState) => void;
@@ -84,6 +86,7 @@ export function ChatThread({
               onChoose={onChoose}
               onRetry={onRetry}
               onSuggest={onSuggest}
+              onAskWhy={onAskWhy}
               onRunPlan={onRunPlan}
               onCancelPlan={onCancelPlan}
               onEditPlan={onEditPlan}
@@ -115,6 +118,7 @@ function AssistantBubble({
   onChoose,
   onRetry,
   onSuggest,
+  onAskWhy,
   onRunPlan,
   onCancelPlan,
   onEditPlan,
@@ -123,6 +127,7 @@ function AssistantBubble({
   onChoose: (value: string) => void;
   onRetry: () => void;
   onSuggest: (card: OrchestratorCard, status: "approved" | "rejected") => void;
+  onAskWhy?: (value: string) => void;
   onRunPlan: () => void;
   onCancelPlan: () => void;
   onEditPlan: (plan: PlanState) => void;
@@ -160,6 +165,7 @@ function AssistantBubble({
             onChoose={onChoose}
             onRetry={onRetry}
             onSuggest={onSuggest}
+            onAskWhy={onAskWhy}
           />
         ))}
         {message.status === "error" && message.error ? (

@@ -38,3 +38,9 @@ prompts:
   supplier_reply_extract:
     file: v1/supplier_reply_extract.prompt.md
     version: "1"
+  explainer_explain:
+    file: v1/explainer_explain.prompt.md
+    version: "1"
+  explainer_whatif:
+    file: v1/explainer_whatif.prompt.md
+    version: "1"

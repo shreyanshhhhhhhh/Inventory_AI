@@ -206,6 +206,8 @@ function cardType(value: unknown): OrchestratorCardType | null {
     "exception_list",
     "po_suggestion",
     "email_draft",
+    "explanation",
+    "whatif_compare",
     "text",
     "clarification",
     "refusal",

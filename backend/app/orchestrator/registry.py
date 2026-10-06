@@ -6,6 +6,7 @@ from typing import Any
 
 from app.agents.context import AgentContext
 from app.agents.exception_monitor import exception_monitor_handler
+from app.agents.explainer import explainer_handler
 from app.agents.forecast import forecast_agent_handler
 from app.agents.replenishment import replenishment_handler
 from app.agents.supplier_comm import supplier_comm_handler
@@ -210,12 +211,13 @@ def build_default_registry() -> AgentRegistry:
         )
     )
     registry.register(
-        _placeholder(
-            "explainer",
-            tasks=frozenset({"explain"}),
+        AgentSpec(
+            name="explainer",
+            description="Grounded explanations of suggestions, exceptions, and what-if scenarios.",
+            tasks=frozenset({"explain", "whatif"}),
             write_tasks=frozenset(),
-            cards={"explain": "text"},
-            description="Plain-language explanations of inventory figures.",
+            card_type_for_task={"explain": "explanation", "whatif": "whatif_compare"},
+            handler=explainer_handler,
         )
     )
     registry.register(

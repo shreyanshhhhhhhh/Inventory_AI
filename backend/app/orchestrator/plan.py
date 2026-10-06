@@ -25,6 +25,7 @@ ROUTING_TABLE: dict[str, list[tuple[str, str, str, list[str]]]] = {
         ("s2", "supplier_comm", "draft_emails", ["s1"]),
     ],
     "explain": [("s1", "explainer", "explain", [])],
+    "whatif": [("s1", "explainer", "whatif", [])],
     "data_quality": [("s1", "data_quality", "check", [])],
 }
 

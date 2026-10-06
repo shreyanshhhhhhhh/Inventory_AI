@@ -43,13 +43,13 @@ _ZERO = Decimal("0")
 
 
 def detect_for_business(session: Session, *, business_id: str) -> list[dict[str, object]]:
-    findings, contexts = _run_detectors(session, business_id=business_id)
+    findings, contexts, forecast_meta = _run_detectors(session, business_id=business_id)
     items: list[dict[str, object]] = []
     for finding in findings:
         allowed = candidate_actions(finding, contexts.get(finding.dedupe_key, _empty_ctx()))
         items.append(
             {
-                **_finding_dict(finding),
+                **_finding_dict(finding, forecast_meta),
                 "candidate_actions": allowed,
             }
         )
@@ -64,8 +64,7 @@ def persist_ranked_findings(
     run_id: str,
     rankings: list[dict[str, Any]],
 ) -> list[dict[str, object]]:
-    findings, contexts = _run_detectors(session, business_id=business_id)
-    by_key = {item.dedupe_key: item for item in findings}
+    findings, contexts, forecast_meta = _run_detectors(session, business_id=business_id)
     rank_by_key = {str(item.get("dedupe_key")): item for item in rankings if item.get("dedupe_key")}
     stored: list[dict[str, object]] = []
     for finding in findings:
@@ -90,12 +89,13 @@ def persist_ranked_findings(
             entity_id=finding.entity_id,
             dedupe_key=finding.dedupe_key,
             title=finding.title,
-            evidence=finding.evidence,
+            evidence=_enrich_evidence(finding, forecast_meta),
             recommended_action=action,
             rationale=rationale,
             suggestion_id=suggestion_id,
         )
         if created and needs_approval(action):
+            stored_evidence = _enrich_evidence(finding, forecast_meta)
             suggestion = suggestion_service.create_suggestion(
                 session,
                 business_id=business_id,
@@ -105,12 +105,14 @@ def persist_ranked_findings(
                 payload={
                     "title": finding.title,
                     "summary": rationale,
+                    "reason_codes": list(stored_evidence.get("reason_codes") or []),
+                    "evidence": jsonable(stored_evidence),
                     "extra": {
                         "action": action,
                         "exception_id": row["id"],
                         "exception_type": finding.exception_type,
                         "dedupe_key": finding.dedupe_key,
-                        "evidence": jsonable(finding.evidence),
+                        "evidence": jsonable(stored_evidence),
                     },
                 },
             )
@@ -156,9 +158,9 @@ def _run_detectors(
     session: Session,
     *,
     business_id: str,
-) -> tuple[list[DetectorFinding], dict[str, PlaybookContext]]:
+) -> tuple[list[DetectorFinding], dict[str, PlaybookContext], dict[str, object]]:
     today = utcnow().date()
-    cover_rows, demand_rows, orders, suppliers, movements, forecast_map, chases, contexts = _snapshots(
+    cover_rows, demand_rows, orders, suppliers, movements, forecast_map, chases, contexts, forecast_meta = _snapshots(
         session,
         business_id=business_id,
         today=today,
@@ -170,7 +172,7 @@ def _run_detectors(
     findings.extend(detect_supplier_delay(orders, suppliers, today=today))
     findings.extend(detect_data_anomaly(cover_rows, movements, forecast_map))
     findings.extend(detect_chase_no_reply(chases))
-    return findings, contexts
+    return findings, contexts, forecast_meta
 
 
 def _snapshots(
@@ -187,6 +189,7 @@ def _snapshots(
     dict[str, Decimal],
     list[ChaseFollowupSnapshot],
     dict[str, PlaybookContext],
+    dict[str, object],
 ]:
     products = list(
         session.scalars(
@@ -421,7 +424,11 @@ def _snapshots(
             other_location_has_stock=False,
             other_location_is_low=False,
         )
-    return cover_rows, demand_rows, orders, suppliers, movements, forecast_map, chases, contexts
+    forecast_meta: dict[str, object] = {
+        "horizon_days": listed.get("horizon_days"),
+        "by_product": forecast_by_id,
+    }
+    return cover_rows, demand_rows, orders, suppliers, movements, forecast_map, chases, contexts, forecast_meta
 
 
 def _lead_time(links: list[ProductSupplier]) -> int:
@@ -459,7 +466,7 @@ def _as_date(value: object) -> date | None:
     return date.fromisoformat(text[:10])
 
 
-def _finding_dict(finding: DetectorFinding) -> dict[str, object]:
+def _finding_dict(finding: DetectorFinding, forecast_meta: dict[str, object] | None = None) -> dict[str, object]:
     return {
         "exception_type": finding.exception_type,
         "severity": finding.severity,
@@ -467,8 +474,25 @@ def _finding_dict(finding: DetectorFinding) -> dict[str, object]:
         "entity_type": finding.entity_type,
         "entity_id": finding.entity_id,
         "dedupe_key": finding.dedupe_key,
-        "evidence": jsonable(finding.evidence),
+        "evidence": jsonable(_enrich_evidence(finding, forecast_meta or {})),
     }
+
+
+def _enrich_evidence(finding: DetectorFinding, forecast_meta: dict[str, object]) -> dict[str, object]:
+    evidence = dict(finding.evidence or {})
+    evidence.setdefault("reason_codes", [finding.exception_type])
+    by_product = forecast_meta.get("by_product")
+    if finding.entity_type == "product" and isinstance(by_product, dict):
+        forecast = by_product.get(finding.entity_id)
+        if isinstance(forecast, dict):
+            evidence.setdefault("forecast_method", forecast.get("method"))
+            evidence.setdefault("chosen_model", forecast.get("method"))
+            if evidence.get("forecast_units") is None and forecast.get("forecast_units") is not None:
+                evidence["forecast_units"] = forecast["forecast_units"]
+            evidence.setdefault("daily_average", forecast.get("daily_average"))
+            evidence.setdefault("horizon_days", forecast_meta.get("horizon_days"))
+            evidence.setdefault("history_units", forecast.get("history_units"))
+    return evidence
 
 
 def _empty_ctx() -> PlaybookContext:

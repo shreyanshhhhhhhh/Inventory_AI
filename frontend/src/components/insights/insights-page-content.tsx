@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChartLine } from "lucide-react";
 import {
   Bar,
@@ -25,6 +27,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useDemandForecast,
@@ -89,6 +93,8 @@ function chartPoints(detail: ForecastDetail): ChartPoint[] {
 export function InsightsPageContent() {
   const forecast = useDemandForecast();
   const reports = useReports();
+  const router = useRouter();
+  const [askWhy, setAskWhy] = useState("");
 
   const columns: DataTableColumn<ForecastSummary>[] = [
     {
@@ -155,6 +161,43 @@ export function InsightsPageContent() {
       />
 
       {forecast.error ? <p className="text-sm text-destructive">{forecast.error}</p> : null}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Ask why</CardTitle>
+          <CardDescription>
+            Opens Agent Inbox with a grounded explanation. Numbers come from stored evidence, not invented prose.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            value={askWhy}
+            onChange={(event) => setAskWhy(event.target.value)}
+            placeholder={
+              selected
+                ? `/why ${selected.sku}`
+                : "Why did you suggest 200 units? or /whatif demand up 20%"
+            }
+            aria-label="Ask why"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                const text = askWhy.trim() || (selected ? `/why ${selected.sku}` : "/why");
+                router.push(`/inbox?ask=${encodeURIComponent(text)}`);
+              }
+            }}
+          />
+          <Button
+            type="button"
+            onClick={() => {
+              const text = askWhy.trim() || (selected ? `/why ${selected.sku}` : "/why");
+              router.push(`/inbox?ask=${encodeURIComponent(text)}`);
+            }}
+          >
+            Ask why
+          </Button>
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-3">
         <StatCard

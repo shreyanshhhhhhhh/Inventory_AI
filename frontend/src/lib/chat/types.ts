@@ -44,6 +44,8 @@ export type OrchestratorCardType =
   | "exception_list"
   | "po_suggestion"
   | "email_draft"
+  | "explanation"
+  | "whatif_compare"
   | "text"
   | "clarification"
   | "refusal"

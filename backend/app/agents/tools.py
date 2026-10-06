@@ -20,6 +20,7 @@ from app.services import replenishment as replenishment_service
 from app.services import supplier_reliability as reliability_service
 from app.services.dashboard import get_needs_attention
 from app.services.exceptions import ExceptionError, get_exception
+from app.services.explainer import ExplainerError, collect_evidence, get_run_trace, run_whatif
 from app.services.forecast import ForecastError, get_forecast, get_history, list_forecasts
 from app.services.forecast_eval import get_forecast_accuracy, run_forecast
 from app.services.inventory import get_stock_levels
@@ -209,7 +210,14 @@ class ReorderItem(BaseModel):
     reorder_point: Decimal | None
     safety_stock: Decimal | None
     forecast_units: Decimal
+    forecast_method: str | None = None
+    daily_average: Decimal | None = None
+    horizon_days: int | None = None
+    history_units: Decimal | None = None
     recommended_quantity: Decimal
+    unit_cost: Decimal | None = None
+    lead_time_days: int | None = None
+    original_lead_time_days: int | None = None
     suppliers: list[SupplierOption] = Field(default_factory=list)
 
 
@@ -356,6 +364,67 @@ class SuggestionOutput(BaseModel):
     suggestion_type: str
     status: str
     payload: dict[str, Any]
+
+
+class GetSuggestionInput(ToolInputModel):
+    suggestion_id: str
+
+
+class GetRunTraceInput(ToolInputModel):
+    run_id: str
+
+
+class RunTraceStep(BaseModel):
+    id: str
+    step_kind: str
+    tool_name: str | None = None
+    prompt_name: str | None = None
+    duration_ms: int
+    created_at: str | None = None
+
+
+class GetRunTraceOutput(BaseModel):
+    items: list[RunTraceStep] = Field(default_factory=list)
+
+
+class GetEvidenceInput(ToolInputModel):
+    kind: str | None = None
+    target_id: str | None = None
+    query: str | None = None
+    product_id: str | None = None
+    suggestion_id: str | None = None
+    exception_id: str | None = None
+    purchase_order_id: str | None = None
+
+
+class GetEvidenceOutput(BaseModel):
+    answerable: bool
+    missing: list[str] = Field(default_factory=list)
+    kind: str | None = None
+    subject: str = ""
+    target_id: str | None = None
+    run_id: str | None = None
+    fields: dict[str, Any] = Field(default_factory=dict)
+    evidence: dict[str, Any] = Field(default_factory=dict)
+    trace: list[dict[str, Any]] = Field(default_factory=list)
+    confidence: str = "low"
+    citations: list[dict[str, str]] = Field(default_factory=list)
+
+
+class WhatIfInput(ToolInputModel):
+    query: str | None = None
+    demand_pct: Decimal | None = None
+    delay_days: int | None = None
+    lead_time_days: int | None = None
+    product_id: str | None = None
+
+
+class WhatIfOutput(BaseModel):
+    answerable: bool
+    missing: list[str] = Field(default_factory=list)
+    scenario: dict[str, Any] = Field(default_factory=dict)
+    as_of: str | None = None
+    items: list[dict[str, Any]] = Field(default_factory=list)
 
 
 def _handle_get_stock(ctx: AgentContext, payload: BaseModel) -> GetStockOutput:
@@ -747,6 +816,58 @@ def _handle_get_supplier(ctx: AgentContext, payload: BaseModel) -> GetSupplierOu
     return GetSupplierOutput.model_validate(raw)
 
 
+def _handle_get_suggestion(ctx: AgentContext, payload: BaseModel) -> SuggestionOutput:
+    data = GetSuggestionInput.model_validate(payload.model_dump())
+    try:
+        row = suggestion_service.get_suggestion(
+            ctx.session,
+            business_id=ctx.business_id,
+            suggestion_id=data.suggestion_id,
+        )
+    except suggestion_service.AgentSuggestionError as exc:
+        raise AgentError(exc.message, code=exc.code, status_code=exc.status_code) from exc
+    return SuggestionOutput.model_validate(row)
+
+
+def _handle_get_run_trace(ctx: AgentContext, payload: BaseModel) -> GetRunTraceOutput:
+    data = GetRunTraceInput.model_validate(payload.model_dump())
+    items = get_run_trace(ctx.session, business_id=ctx.business_id, run_id=data.run_id)
+    return GetRunTraceOutput(items=[RunTraceStep.model_validate(item) for item in items])
+
+
+def _handle_get_evidence(ctx: AgentContext, payload: BaseModel) -> GetEvidenceOutput:
+    data = GetEvidenceInput.model_validate(payload.model_dump())
+    try:
+        raw = collect_evidence(
+            ctx.session,
+            business_id=ctx.business_id,
+            kind=data.kind,
+            target_id=data.target_id,
+            query=data.query,
+            product_id=data.product_id,
+            suggestion_id=data.suggestion_id,
+            exception_id=data.exception_id,
+            purchase_order_id=data.purchase_order_id,
+        )
+    except ExplainerError as exc:
+        raise AgentError(exc.message, code=exc.code, status_code=exc.status_code) from exc
+    return GetEvidenceOutput.model_validate(raw)
+
+
+def _handle_whatif(ctx: AgentContext, payload: BaseModel) -> WhatIfOutput:
+    data = WhatIfInput.model_validate(payload.model_dump())
+    raw = run_whatif(
+        ctx.session,
+        business_id=ctx.business_id,
+        query=data.query,
+        demand_pct=data.demand_pct,
+        delay_days=data.delay_days,
+        lead_time_days=data.lead_time_days,
+        product_id=data.product_id,
+    )
+    return WhatIfOutput.model_validate(raw)
+
+
 def _handle_get_exception(ctx: AgentContext, payload: BaseModel) -> GetExceptionOutput:
     data = GetExceptionInput.model_validate(payload.model_dump())
     try:
@@ -931,6 +1052,42 @@ TOOLS: dict[str, ToolSpec] = {
         input_model=DraftEmailInput,
         output_model=SuggestionOutput,
         handler=_handle_draft_email,
+    ),
+    "get_suggestion": ToolSpec(
+        name="get_suggestion",
+        description="One tenant-scoped agent suggestion and its payload evidence.",
+        read=True,
+        required_role=None,
+        input_model=GetSuggestionInput,
+        output_model=SuggestionOutput,
+        handler=_handle_get_suggestion,
+    ),
+    "get_run_trace": ToolSpec(
+        name="get_run_trace",
+        description="agent_steps for a run in this shop. Tool names only.",
+        read=True,
+        required_role=None,
+        input_model=GetRunTraceInput,
+        output_model=GetRunTraceOutput,
+        handler=_handle_get_run_trace,
+    ),
+    "get_evidence": ToolSpec(
+        name="get_evidence",
+        description="Structured evidence for a suggestion, exception, PO, or product.",
+        read=True,
+        required_role=None,
+        input_model=GetEvidenceInput,
+        output_model=GetEvidenceOutput,
+        handler=_handle_get_evidence,
+    ),
+    "whatif_reorder": ToolSpec(
+        name="whatif_reorder",
+        description="Deterministic before/after reorder comparison with modified demand or lead time.",
+        read=True,
+        required_role=None,
+        input_model=WhatIfInput,
+        output_model=WhatIfOutput,
+        handler=_handle_whatif,
     ),
 }
 

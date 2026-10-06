@@ -13,7 +13,7 @@ Registered agents and tasks:
 - exception_monitor: scan
 - replenishment: recommend, draft_po
 - supplier_comm: draft_emails
-- explainer: explain
+- explainer: explain, whatif
 - data_quality: check
 
 Rules:

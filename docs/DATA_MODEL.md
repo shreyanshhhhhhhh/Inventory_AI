@@ -369,7 +369,7 @@ The only write target for agent tools. Tools never create purchase orders, send 
 | run_id | CHAR(36) | FK agent_runs |
 | suggestion_type | VARCHAR(32) | `generic`, `draft_po`, `draft_email` |
 | status | VARCHAR(20) | `pending` on create. Owner approve/reject sets `approved` or `rejected`. `dismissed` is reserved |
-| payload | JSON | Lines, supplier, evidence, reason codes, confidence, caveats, guardrail result, and `decisions` (`action`, `reason`, `actor_user_id`, `at`, `purchase_order_id`) |
+| payload | JSON | Lines, supplier, evidence (reason codes, on-hand, forecast units and model, lead time, reliability), confidence, caveats, guardrail result, and `decisions` (`action`, `reason`, `actor_user_id`, `at`, `purchase_order_id`) |
 | created_at | datetime | |
 
 ## exceptions
@@ -387,7 +387,7 @@ Open findings from the exception monitor. Dedupe is unique among **open** rows p
 | entity_id | CHAR(36) | |
 | dedupe_key | VARCHAR(240) | Stable id so a nightly run does not recreate the same open issue |
 | title | VARCHAR(240) | |
-| evidence | JSON | Numbers and dates from detectors |
+| evidence | JSON | Detector numbers plus `reason_codes`, forecast method/model, lead time, and reliability when known. The explainer cites these fields. `agent_steps` for the `run_id` is the tool/LLM trace. |
 | recommended_action | VARCHAR(40) NULL | Playbook action |
 | rationale | TEXT NULL | LLM sentence, clipped to playbook |
 | suggestion_id | CHAR(36) NULL | FK agent_suggestions when approval is needed |

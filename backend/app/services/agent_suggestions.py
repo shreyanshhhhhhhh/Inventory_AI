@@ -284,6 +284,15 @@ def reject_suggestion(
     return _payload(suggestion)
 
 
+def get_suggestion(
+    session: Session,
+    *,
+    business_id: str,
+    suggestion_id: str,
+) -> dict[str, object]:
+    return _payload(_get_or_error(session, business_id=business_id, suggestion_id=suggestion_id))
+
+
 def list_suggestions(
     session: Session,
     *,

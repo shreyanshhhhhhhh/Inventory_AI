@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { Inbox } from "lucide-react";
 
 import { EmptyState } from "@/components/common/empty-state";
@@ -8,6 +9,7 @@ import { useInboxSuggestions } from "@/lib/chat/suggestions";
 
 export function ApprovalsTab() {
   const { items, setStatus } = useInboxSuggestions();
+  const router = useRouter();
   const pending = items.filter((item) => item.status === "pending");
   const decided = items.filter((item) => item.status !== "pending");
 
@@ -33,6 +35,17 @@ export function ApprovalsTab() {
             </Button>
             <Button size="sm" variant="outline" onClick={() => setStatus(item.id, "rejected")}>
               Reject
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                router.push(
+                  `/inbox?ask=${encodeURIComponent(`/why suggestion ${item.suggestionId || item.id}`)}`,
+                )
+              }
+            >
+              Why?
             </Button>
           </div>
         </article>

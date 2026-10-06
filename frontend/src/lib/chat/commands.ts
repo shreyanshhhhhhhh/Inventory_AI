@@ -45,8 +45,20 @@ export const SLASH_COMMANDS: SlashCommand[] = [
   {
     command: "/explain",
     label: "Explain",
-    description: "Explain the latest inventory figures",
-    hint: "/explain",
+    description: "Explain a suggestion, exception, or purchase order",
+    hint: "/why <suggestion|exception|PO>",
+  },
+  {
+    command: "/why",
+    label: "Why",
+    description: "Grounded explanation of a stored decision",
+    hint: "/why <suggestion|exception|PO>",
+  },
+  {
+    command: "/whatif",
+    label: "What if",
+    description: "Compare stockout date, quantity, and cost under a scenario",
+    hint: "/whatif demand up 20%",
   },
   {
     command: "/quality",
@@ -65,7 +77,8 @@ export function intentToCommand(intent: string): string {
     reorder: "/reorder",
     draft_po: "/draft-po",
     draft_email: "/email",
-    explain: "/explain",
+    explain: "/why",
+    whatif: "/whatif",
     data_quality: "/quality",
   };
   return map[intent] ?? `/${intent.replaceAll("_", "-")}`;

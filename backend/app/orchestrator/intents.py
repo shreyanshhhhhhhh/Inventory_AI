@@ -14,6 +14,7 @@ INTENT_ALLOWLIST = frozenset(
         "draft_po",
         "draft_email",
         "explain",
+        "whatif",
         "data_quality",
     }
 )
@@ -36,6 +37,8 @@ SLASH_COMMANDS: dict[str, str] = {
     "po": "draft_po",
     "email": "draft_email",
     "explain": "explain",
+    "why": "explain",
+    "whatif": "whatif",
     "quality": "data_quality",
 }
 
@@ -49,6 +52,8 @@ def supported_command_list() -> list[str]:
         "/draft-po",
         "/email",
         "/explain",
+        "/why",
+        "/whatif",
         "/quality",
     ]
 

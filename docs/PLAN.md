@@ -4,7 +4,7 @@ Inventory management for a small retailer (about 50–500 SKUs). The owner shoul
 
 Later phases add the differentiator: agentic AI. Agents turn forecasts into actions, handle exceptions, and explain every decision. Those phases are not this project yet.
 
-**Current work is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator plus the Agent Inbox chat UI plus the forecast agent plus the exception monitor plus the replenishment agent and purchase guardrail plus the supplier communication agent.** Nothing is emailed until the owner approves. There are no live LLM calls in tests. Forecasts and reorder quantities are computed in services and do not create purchase orders by themselves. Agent write tools only write `agent_suggestions` and email drafts. Approving a guarded purchase suggestion creates a draft purchase order. Approving a supplier email sends it through `EmailSender`. Exception findings persist to `exceptions`. Orchestrator details live in [ORCHESTRATOR.md](ORCHESTRATOR.md).
+**Current work is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator plus the Agent Inbox chat UI plus the forecast agent plus the exception monitor plus the replenishment agent and purchase guardrail plus the supplier communication agent plus the explainer agent.** Nothing is emailed until the owner approves. There are no live LLM calls in tests. Forecasts and reorder quantities are computed in services and do not create purchase orders by themselves. Agent write tools only write `agent_suggestions` and email drafts. Approving a guarded purchase suggestion creates a draft purchase order. Approving a supplier email sends it through `EmailSender`. Exception findings persist to `exceptions`. The explainer never invents numbers: it cites stored evidence or falls back to a template. Orchestrator details live in [ORCHESTRATOR.md](ORCHESTRATOR.md).
 
 Design lives in [ARCHITECTURE.md](ARCHITECTURE.md), [WORKFLOW.md](WORKFLOW.md), [DATA_MODEL.md](DATA_MODEL.md), and [ORCHESTRATOR.md](ORCHESTRATOR.md). Coding agents follow [AGENTS.md](../AGENTS.md).
 
@@ -78,7 +78,7 @@ No mobile app, barcode hardware, accounting or general ledger, multi-currency, m
 - **Goal:** Every agent decision can be read in plain language and tied to data.
 - **Deliverables:** Explanation on each inbox decision (inputs, tools called, why this action).
 - **Why it matters:** A small business will not delegate purchasing it cannot check.
-- **Done when:** The owner can open a decision and see why, including the forecast and stock figures that drove it, with an audit trail.
+- **Done when:** The owner can open a decision and see why, including the forecast and stock figures that drove it, with an audit trail. `/why` and `/whatif` are implemented: answers are grounded in stored evidence, invented numbers fall back to a template, and what-if math is a deterministic replenishment recomputation.
 
 ### P6 — Evaluation and guardrails
 

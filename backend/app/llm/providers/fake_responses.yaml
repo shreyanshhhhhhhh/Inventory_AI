@@ -42,6 +42,10 @@ understand:
       text: '{"intents":[{"intent":"reorder","params":{"query":"write_before_read_plan"}},{"intent":"draft_email","params":{"query":"write_before_read_plan"}}],"confidence":0.9,"ambiguous":false}'
     - contains: "do it for that supplier"
       text: '{"intents":[{"intent":"draft_email","params":{"supplier_name":"Acme"}}],"confidence":0.91,"ambiguous":false}'
+    - contains: "why did you suggest"
+      text: '{"intents":[{"intent":"explain","params":{"query":"why did you suggest 200 units?"}}],"confidence":0.92,"ambiguous":false}'
+    - contains: "what if demand"
+      text: '{"intents":[{"intent":"whatif","params":{"query":"what if demand up 20%"}}],"confidence":0.92,"ambiguous":false}'
   text: '{"intents":[{"intent":"forecast","params":{}}],"confidence":0.9,"ambiguous":false}'
   tokens_in: 20
   tokens_out: 12
@@ -101,3 +105,17 @@ supplier_reply_extract:
   text: '{"confirmed_date":null,"quantity_confirmed":null,"delay_days":null,"price_change":null}'
   tokens_in: 14
   tokens_out: 8
+explainer_explain:
+  match:
+    - contains: "invented-why"
+      text: '{"explanation":"I suggested 99999 units on 2099-01-01.","confidence":"high","what_would_change":"Nothing."}'
+  text: '{"explanation":"The draft uses the stored reason codes and the recorded on-hand, forecast, and recommended quantity.","confidence":"high","what_would_change":"A higher on-hand or a lower forecast would change the quantity."}'
+  tokens_in: 16
+  tokens_out: 12
+explainer_whatif:
+  match:
+    - contains: "invented-whatif"
+      text: '{"explanation":"Quantity would jump to 99999 units.","confidence":"high","what_would_change":""}'
+  text: '{"explanation":"The scenario changes recommended quantity, stockout date, and cost compared with the baseline.","confidence":"high","what_would_change":"A different demand or lead-time assumption would change the after column."}'
+  tokens_in: 16
+  tokens_out: 12

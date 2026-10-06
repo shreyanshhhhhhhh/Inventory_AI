@@ -1,5 +1,6 @@
 "use client";
 
+import { WhyButton } from "@/components/inbox/cards/explanation-cards";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { asRecords, asString } from "@/lib/chat/card-data";
@@ -45,7 +46,13 @@ export function StockTableCard({ card }: { card: OrchestratorCard }) {
   );
 }
 
-export function ExceptionListCard({ card }: { card: OrchestratorCard }) {
+export function ExceptionListCard({
+  card,
+  onAskWhy,
+}: {
+  card: OrchestratorCard;
+  onAskWhy?: (value: string) => void;
+}) {
   const items = asRecords(card.data.items);
   return (
     <article className="rounded-xl border bg-card p-3 shadow-sm">
@@ -70,6 +77,10 @@ export function ExceptionListCard({ card }: { card: OrchestratorCard }) {
                       {asString(item.recommended_action)}
                     </span>
                   ) : null}
+                  <WhyButton
+                    onAsk={onAskWhy}
+                    command={asString(item.id) ? `/why exception ${asString(item.id)}` : ""}
+                  />
                   <Badge variant={severity === "high" || severity === "critical" ? "destructive" : "secondary"}>
                     {severity}
                   </Badge>

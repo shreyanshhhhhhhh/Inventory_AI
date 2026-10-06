@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { WhyButton } from "@/components/inbox/cards/explanation-cards";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -18,17 +19,24 @@ function useCardStatus(card: OrchestratorCard): "pending" | "approved" | "reject
 export function PoSuggestionCard({
   card,
   onDecide,
+  onAskWhy,
 }: {
   card: OrchestratorCard;
   onDecide: (status: "approved" | "rejected") => void;
+  onAskWhy?: (value: string) => void;
 }) {
   const lines = asRecords(card.data.lines);
   const status = useCardStatus(card);
+  const suggestionId =
+    asString(card.data.suggestion_id) || asString(asRecords(card.data.suggestions)[0]?.id);
   return (
     <article className="rounded-xl border bg-card p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-sm font-medium">Purchase order suggestion</h4>
-        <span className="text-xs text-muted-foreground">{status}</span>
+        <div className="flex items-center gap-2">
+          <WhyButton onAsk={onAskWhy} command={suggestionId ? `/why suggestion ${suggestionId}` : ""} />
+          <span className="text-xs text-muted-foreground">{status}</span>
+        </div>
       </div>
       <p className="mt-1 text-xs text-muted-foreground">{card.message}</p>
       {lines.length > 0 ? (
@@ -57,9 +65,11 @@ export function PoSuggestionCard({
 export function EmailDraftCard({
   card,
   onDecide,
+  onAskWhy,
 }: {
   card: OrchestratorCard;
   onDecide: (status: "approved" | "rejected") => void;
+  onAskWhy?: (value: string) => void;
 }) {
   const [subject, setSubject] = useState(asString(card.data.subject) || "");
   const [body, setBody] = useState(asString(card.data.body) || card.message);
@@ -114,7 +124,13 @@ export function EmailDraftCard({
     <article className="rounded-xl border bg-card p-3 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-sm font-medium">Email draft</h4>
-        <span className="text-xs text-muted-foreground">{status}</span>
+        <div className="flex items-center gap-2">
+          <WhyButton
+            onAsk={onAskWhy}
+            command={asString(card.data.suggestion_id) ? `/why suggestion ${asString(card.data.suggestion_id)}` : ""}
+          />
+          <span className="text-xs text-muted-foreground">{status}</span>
+        </div>
       </div>
       {banner ? (
         <p className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-xs text-amber-950 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-100">

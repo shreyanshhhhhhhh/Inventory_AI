@@ -2,7 +2,7 @@
 
 The chat orchestrator turns slash commands and free text, including compound requests, into a validated DAG of agent tasks. It is the full Phase 3A orchestrator: understand, validate, plan, optional plan approval, dispatch, aggregate, and reply.
 
-`forecast`, `exception_monitor`, `replenishment`, and `supplier_comm` are filled in. `explainer` and `data_quality` are still placeholders. Placeholders return typed `not implemented yet` results so the plumbing can be tested with `LLM_PROVIDER=fake`. Agent write tools never create purchase orders, send email, or post stock. They only insert `agent_suggestions` (and email drafts). A `draft_po` suggestion is inserted only after `validate_po_proposal`. Approving that suggestion creates a **draft** purchase order through the purchase-order service. Approving a supplier email sends it through `EmailSender`. Exception findings also persist to `exceptions`.
+`forecast`, `exception_monitor`, `replenishment`, `supplier_comm`, and `explainer` are filled in. `data_quality` is still a placeholder. Placeholders return typed `not implemented yet` results so the plumbing can be tested with `LLM_PROVIDER=fake`. Agent write tools never create purchase orders, send email, or post stock. They only insert `agent_suggestions` (and email drafts). A `draft_po` suggestion is inserted only after `validate_po_proposal`. Approving that suggestion creates a **draft** purchase order through the purchase-order service. Approving a supplier email sends it through `EmailSender`. Exception findings also persist to `exceptions`. The explainer is read-only: it cites stored evidence and never invents numbers.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md), [PLAN.md](PLAN.md), and [AGENTS.md](../AGENTS.md).
 
@@ -40,7 +40,8 @@ Implemented as a LangGraph `StateGraph`. Run state is stored on `agent_runs` (`p
 | `/reorder` | `reorder` | `replenishment` | `recommend` | no | owner, staff |
 | `/draft-po` `/po` | `draft_po` | `replenishment` | `recommend` then `draft_po` | yes | owner |
 | `/email` | `draft_email` | `replenishment` then `supplier_comm` | `recommend` then `draft_emails` | yes | owner |
-| `/explain` | `explain` | `explainer` | `explain` | no | owner, staff |
+| `/explain` `/why` | `explain` | `explainer` | `explain` | no | owner, staff |
+| `/whatif` | `whatif` | `explainer` | `whatif` | no | owner, staff |
 | `/quality` | `data_quality` | `data_quality` | `check` | no | owner, staff |
 
 Several slash commands in one message (`/scan /reorder /email`) are treated as a compound request.
@@ -59,7 +60,8 @@ flowchart TB
   forecast["forecast -> forecast.forecast"]
   scan["scan_exceptions -> exception_monitor.scan"]
   reorder["reorder -> replenishment.recommend"]
-  explain["explain -> explainer.explain"]
+  explain["explain / why -> explainer.explain"]
+  whatif["whatif -> explainer.whatif"]
   quality["data_quality -> data_quality.check"]
   draftPo["draft_po"]
   rec1["replenishment.recommend"]
@@ -112,7 +114,7 @@ Agents register by name with tasks and write-tasks. Placeholders:
 | `exception_monitor` | `scan` | Detectors in code. LLM ranks playbook actions only. Writes `exceptions` and `agent_suggestions`. Orchestrator task is still read-only so `/scan` does not pause. |
 | `replenishment` | `recommend`, `draft_po` | Tools: `reorder_recommendations`, `get_supplier_reliability`, `get_open_pos`, `create_po_suggestion`. `/reorder` is read-only. `/draft-po` and `/po` may write one suggestion per supplier after the guardrail. |
 | `supplier_comm` | `draft_emails` | Tools: `get_po`, `get_supplier`, `get_exception`, `draft_email`. Templates fill PO numbers, quantities, and dates in code. The LLM writes greeting/ask/closing. A grounding check regenerates once, then falls back to the plain template. Does not send mail. |
-| `explainer` | `explain` | not implemented yet |
+| `explainer` | `explain`, `whatif` | Tools: `get_suggestion`, `get_run_trace`, `get_evidence`, `get_history`, `whatif_reorder`. `/why` and `/explain` cite stored evidence. Every number and date in the prose must exist on that evidence or a template is used. `/whatif` recomputes replenishment with modified demand, delay, or lead time. Unanswerable questions name the missing data. |
 | `data_quality` | `check` | not implemented yet |
 | `guardrail` | `review` | Re-validates purchase proposals on earlier steps. Does not create a purchase order. |
 
@@ -145,7 +147,7 @@ Each frame is `event: <type>` plus a JSON `data` object that always includes `ru
 | `step_done` | Step finished or skipped | `step_id`, `status`, `result_type` |
 | `step_failed` | Step raised or timed out | `step_id`, `error` |
 | `token` | Streamed summary text | `text` |
-| `card` | Typed UI card | `card` with `type` one of `stock_table`, `forecast_chart`, `exception_list`, `po_suggestion`, `email_draft`, `text`, `clarification`, `refusal`, `plan` |
+| `card` | Typed UI card | `card` with `type` one of `stock_table`, `forecast_chart`, `exception_list`, `po_suggestion`, `email_draft`, `explanation`, `whatif_compare`, `text`, `clarification`, `refusal`, `plan` |
 | `awaiting_approval` | Write plan is waiting | `plan`, `actions`: `run`, `edit`, `cancel` |
 | `done` | Terminal success, clarify, or refuse | `status`, `summary` |
 | `error` | Run crashed | `message`, `code` |
@@ -162,6 +164,8 @@ Aggregate emits one card per finished step (skipped dependents are omitted):
 - `exception_list`
 - `po_suggestion`
 - `email_draft`
+- `explanation`
+- `whatif_compare`
 - `text`
 - `clarification` (options, never a guess)
 - `refusal` (supported commands)
@@ -172,9 +176,9 @@ The summary LLM sees those typed objects inside `<<DATA>>` blocks. If it invents
 
 - LangGraph is used only for this orchestrator graph. No LangChain agents and no Langfuse.
 - Tests always use `LLM_PROVIDER=fake`. Live providers cannot be constructed under pytest.
-- `supplier_comm` drafts emails from order facts and never sends them. `explainer` and `data_quality` are still placeholders. `forecast`, `exception_monitor`, and `replenishment` call service tools. The DAG, approval, SSE, cancel, and summary checks are in.
+- `supplier_comm` drafts emails from order facts and never sends them. `explainer` cites stored evidence and never invents numbers. `data_quality` is still a placeholder. `forecast`, `exception_monitor`, and `replenishment` call service tools. The DAG, approval, SSE, cancel, and summary checks are in.
 - Write tools still only insert `agent_suggestions` (and `supplier_messages` drafts). `create_po_suggestion` and `create_draft_po_suggestion` refuse a `draft_po` row unless `validate_po_proposal` passed. `draft_email` inserts a `supplier_messages` draft. The exception monitor also inserts `exceptions` rows through a service, never purchase orders or ledger rows.
-- Chat has an API and an Agent Inbox chat UI. The forecast agent, exception monitor, replenishment agent, and supplier communication agent are filled in.
+- Chat has an API and an Agent Inbox chat UI. The forecast agent, exception monitor, replenishment agent, supplier communication agent, and explainer are filled in.
 - Nightly scans: `POST /api/v1/jobs/exception-scan` (owner JWT or `X-Job-Secret`). Optional in-process scheduler when `EXCEPTION_SCAN_SCHEDULER_ENABLED=true`. Owners set `exception_scan_enabled`, `exception_scan_hour_utc`, and `chase_followup_days` on autonomy rules. Default hour is 02:00 UTC. Default chase follow-up is 3 days. The scheduler is off in pytest.
 - Supplier email: `EMAIL_SENDER=console` (default) logs and never delivers; `smtp` uses `EMAIL_FROM` / `EMAIL_SMTP_*`. Inbox shows a banner in console mode. `POST /api/v1/supplier-replies` stores a paste or webhook. Reply text is DATA. Extracted delay/date become owner-approved suggestions (`update_po_expected_date`).
 - Plan approval is plan-level, not per step. Independent reads still run after one Run click.
@@ -236,4 +240,17 @@ Tools: `get_po`, `get_supplier`, `get_exception`, `draft_email`. Quantities, dat
 The Inbox card shows editable subject and body, Approve and Send, Save draft, and Reject. `POST /api/v1/supplier-messages/{id}/send` is owner-only. Failed SMTP sets `status=failed` and keeps the body. Console mode (`EMAIL_SENDER=console`) logs the message and shows a banner.
 
 `POST /api/v1/supplier-replies` (JWT or `X-Job-Secret`) stores the raw body as DATA. Injection markers empty the extracted fields. Confirmed dates or delay days become a generic suggestion (`extra.action=update_po_expected_date`) that the owner must approve. A sent chase with no reply after `chase_followup_days` raises `chase_no_reply`.
+
+### Explainer agent (evidence from code)
+
+`/why <suggestion|exception|PO>` and `/explain` are read-only. Free text such as "why did you suggest 200 units?" maps to `explain`. `/whatif <scenario>` is also read-only.
+
+Tools: `get_suggestion`, `get_run_trace`, `get_evidence`, `get_history`, `whatif_reorder`. Suggestion and exception payloads store reason codes, on-hand, forecast units and model, lead time, and reliability at the decision site. `agent_steps` is the run trace.
+
+The LLM writes prose from that typed evidence only. After generation, every number and date in the answer must already appear in the evidence. Otherwise code replaces the answer with a template built from the same fields. The card includes confidence and what would change the decision. If the evidence cannot answer, the agent says so and lists the missing data.
+
+`/whatif` supports supplier delay of N days, demand up/down X percent, and lead-time change. Code calls `whatif_compare` (the replenishment formula with modified inputs). The LLM only narrates the before/after stockout date, recommended quantity, and cost.
+
+Inbox suggestion and exception cards have a Why? button that sends `/why …` into chat. The explanation card has a collapsible evidence table. What-if results use a before/after comparison card. Insights has an Ask why box that opens Inbox with the question.
+
 

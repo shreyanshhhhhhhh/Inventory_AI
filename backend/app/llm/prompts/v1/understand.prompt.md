@@ -14,6 +14,7 @@ Allowed intents:
 - draft_po
 - draft_email
 - explain
+- whatif
 - data_quality
 
 Rules:

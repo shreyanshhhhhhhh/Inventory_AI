@@ -190,7 +190,7 @@ def test_parallel_steps_run_concurrently(db) -> None:
         is_cancelled=lambda: False,
     )
     elapsed = time.perf_counter() - started
-    assert results["s1"].status == "not_implemented"
+    assert results["s1"].status == "ok"
     assert results["s2"].status == "ok"
     assert elapsed < 0.55
 

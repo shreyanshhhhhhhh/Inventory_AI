@@ -73,11 +73,11 @@ Open http://127.0.0.1:43123, sign up at `/signup`, then use the app. Owners can 
 - **Inventory** — append-only stock ledger, stock levels, movement history, sales CSV import
 - **Orders** — purchase order lifecycle (draft → approved → sent → received), receive via ledger
 - **Home** — dashboard summary, needs attention, recent activity
-- **Insights** — 14-day demand forecast per SKU, plus movements-over-time and top-sellers charts (read-only)
+- **Insights** — 14-day demand forecast per SKU, plus movements-over-time and top-sellers charts (read-only). Ask why opens Inbox.
 - **Accounts** — stock value, open PO value, payables, supplier totals (read-only)
 - **Settings** — business profile, locations, team (owner-only), autonomy rules including nightly exception scan
 - **Onboarding** — demo seed API and `scripts/seed_demo.py`
-- **Agent Inbox** — SSE chat, plan checklist, suggestion cards, Approvals tab. `/stock` and `/forecast` use the forecast agent. `/scan` runs the exception monitor. `/reorder` and `/draft-po` use the replenishment agent. Approving a purchase suggestion creates a draft purchase order. `/email <supplier> <kind>` drafts a supplier email; Approve and Send is owner-only. See `docs/ORCHESTRATOR.md`.
+- **Agent Inbox** — SSE chat, plan checklist, suggestion cards, Approvals tab. `/stock` and `/forecast` use the forecast agent. `/scan` runs the exception monitor. `/reorder` and `/draft-po` use the replenishment agent. Approving a purchase suggestion creates a draft purchase order. `/email <supplier> <kind>` drafts a supplier email; Approve and Send is owner-only. `/why` and `/whatif` explain stored decisions from evidence. See `docs/ORCHESTRATOR.md`.
 - **Chat orchestrator** — `POST /api/v1/chat/runs`, `GET /api/v1/chat/runs/{id}`, SSE events, cancel/resume.
 - **Jobs** — `POST /api/v1/jobs/exception-scan` (owner JWT or `X-Job-Secret`)
 
