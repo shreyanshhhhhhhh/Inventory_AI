@@ -9,7 +9,6 @@ import { DashboardProvider } from "@/lib/dashboard-hooks";
 import { InventoryProvider } from "@/lib/inventory-hooks";
 import { ReportsProvider } from "@/lib/reports-hooks";
 import { SettingsProvider } from "@/lib/settings-hooks";
-import { MockStoreProvider } from "@/lib/mock-store";
 import { PurchaseOrdersProvider } from "@/lib/purchase-orders-hooks";
 
 export function Providers({ children }: { children: ReactNode }) {
@@ -21,10 +20,8 @@ export function Providers({ children }: { children: ReactNode }) {
             <DashboardProvider>
               <ReportsProvider>
                 <SettingsProvider>
-                  <MockStoreProvider>
-                    {children}
-                    <Toaster richColors closeButton position="top-right" />
-                  </MockStoreProvider>
+                  {children}
+                  <Toaster richColors closeButton position="top-right" />
                 </SettingsProvider>
               </ReportsProvider>
             </DashboardProvider>

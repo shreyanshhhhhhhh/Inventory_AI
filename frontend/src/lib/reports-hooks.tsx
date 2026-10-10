@@ -17,7 +17,9 @@ import type {
   ApiMovementsOverTimePoint,
   ApiTopSeller,
 } from "@/lib/api-types";
+import { parseDecimal } from "@/lib/decimal";
 import { formatDate } from "@/lib/format";
+import type { LoadResult } from "@/lib/load-result";
 import type { PurchaseOrder } from "@/types";
 
 export type MovementTrendPoint = {
@@ -40,17 +42,31 @@ export type SupplierPayableRow = {
   purchaseOrderCount: number;
 };
 
-interface ReportsContextValue {
+type ReportsData = {
   movementTrend: MovementTrendPoint[];
   topSellers: TopSellerPoint[];
   stockValue: number;
+  unvaluedProductCount: number;
   openPoValue: number;
   payablesDue: number;
   supplierRows: SupplierPayableRow[];
+};
+
+interface ReportsContextValue extends ReportsData {
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
 }
+
+const EMPTY_REPORTS: ReportsData = {
+  movementTrend: [],
+  topSellers: [],
+  stockValue: 0,
+  unvaluedProductCount: 0,
+  openPoValue: 0,
+  payablesDue: 0,
+  supplierRows: [],
+};
 
 const ReportsContext = createContext<ReportsContextValue | null>(null);
 
@@ -58,15 +74,15 @@ function mapMovementTrend(items: ApiMovementsOverTimePoint[]): MovementTrendPoin
   return items.map((item) => ({
     date: item.date,
     label: formatDate(item.date),
-    unitsIn: Number(item.units_in),
-    unitsOut: Number(item.units_out),
+    unitsIn: parseDecimal(item.units_in),
+    unitsOut: parseDecimal(item.units_out),
   }));
 }
 
 function mapTopSellers(items: ApiTopSeller[]): TopSellerPoint[] {
   return items.map((item) => ({
     name: item.product_name,
-    units: Number(item.units_sold),
+    units: parseDecimal(item.units_sold),
   }));
 }
 
@@ -75,83 +91,77 @@ function mapSupplierRow(row: ApiAccountsBySupplierRow): SupplierPayableRow {
     id: `${row.supplier_id}-${row.status}`,
     supplierName: row.supplier_name,
     status: row.status as PurchaseOrder["status"],
-    total: Number(row.total),
+    total: parseDecimal(row.total),
     purchaseOrderCount: row.purchase_order_count,
   };
 }
 
+async function fetchReports(): Promise<LoadResult<ReportsData>> {
+  try {
+    const [movements, sellers, summary, bySupplier] = await Promise.all([
+      api.insights.movementsOverTime(30),
+      api.insights.topSellers(30, 5),
+      api.accounts.summary(),
+      api.accounts.bySupplier(),
+    ]);
+    return {
+      data: {
+        movementTrend: mapMovementTrend(movements.items),
+        topSellers: mapTopSellers(sellers.items),
+        stockValue: parseDecimal(summary.stock_value),
+        unvaluedProductCount: summary.unvalued_product_count,
+        openPoValue: parseDecimal(summary.open_po_value),
+        payablesDue: parseDecimal(summary.payables_due),
+        supplierRows: bySupplier.items.map(mapSupplierRow),
+      },
+      error: null,
+    };
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : "Could not load reports.",
+    };
+  }
+}
+
 export function ReportsProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
-  const [movementTrend, setMovementTrend] = useState<MovementTrendPoint[]>([]);
-  const [topSellers, setTopSellers] = useState<TopSellerPoint[]>([]);
-  const [stockValue, setStockValue] = useState(0);
-  const [openPoValue, setOpenPoValue] = useState(0);
-  const [payablesDue, setPayablesDue] = useState(0);
-  const [supplierRows, setSupplierRows] = useState<SupplierPayableRow[]>([]);
+  const { isAuthenticated, isOnboarded } = useAuth();
+  const ready = isAuthenticated && isOnboarded;
+  const [data, setData] = useState<ReportsData>(EMPTY_REPORTS);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!isAuthenticated) {
-      setMovementTrend([]);
-      setTopSellers([]);
-      setStockValue(0);
-      setOpenPoValue(0);
-      setPayablesDue(0);
-      setSupplierRows([]);
-      setIsLoading(false);
-      return;
-    }
+  const apply = useCallback((result: LoadResult<ReportsData>) => {
+    if (result.data) setData(result.data);
+    setError(result.error);
+    setIsLoading(false);
+  }, []);
 
+  const refresh = useCallback(async () => {
+    if (!ready) return;
     setIsLoading(true);
-    setError(null);
-    try {
-      const [movements, sellers, summary, bySupplier] = await Promise.all([
-        api.insights.movementsOverTime(30),
-        api.insights.topSellers(30, 5),
-        api.accounts.summary(),
-        api.accounts.bySupplier(),
-      ]);
-      setMovementTrend(mapMovementTrend(movements.items));
-      setTopSellers(mapTopSellers(sellers.items));
-      setStockValue(Number(summary.stock_value));
-      setOpenPoValue(Number(summary.open_po_value));
-      setPayablesDue(Number(summary.payables_due));
-      setSupplierRows(bySupplier.items.map(mapSupplierRow));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load reports.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isAuthenticated]);
+    apply(await fetchReports());
+  }, [ready, apply]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!ready) return;
+    let cancelled = false;
+    void fetchReports().then((result) => {
+      if (!cancelled) apply(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, apply]);
 
   const value = useMemo<ReportsContextValue>(
     () => ({
-      movementTrend,
-      topSellers,
-      stockValue,
-      openPoValue,
-      payablesDue,
-      supplierRows,
-      isLoading,
-      error,
+      ...(ready ? data : EMPTY_REPORTS),
+      isLoading: ready && isLoading,
+      error: ready ? error : null,
       refresh,
     }),
-    [
-      movementTrend,
-      topSellers,
-      stockValue,
-      openPoValue,
-      payablesDue,
-      supplierRows,
-      isLoading,
-      error,
-      refresh,
-    ],
+    [ready, data, isLoading, error, refresh],
   );
 
   return (

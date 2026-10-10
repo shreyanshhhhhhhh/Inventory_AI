@@ -16,6 +16,8 @@ import type {
   ApiDashboardActivityItem,
   ApiNeedsAttentionItem,
 } from "@/lib/api-types";
+import { parseDecimal } from "@/lib/decimal";
+import type { LoadResult } from "@/lib/load-result";
 import { mapApiStockStatus } from "@/lib/stock";
 
 export type DashboardNeedsAttentionItem = {
@@ -39,18 +41,33 @@ export type DashboardActivityItem = {
   quantity: number | null;
 };
 
-interface DashboardContextValue {
+type DashboardData = {
   totalStockValue: number;
+  unvaluedProductCount: number;
   lowStockCount: number;
   openPurchaseOrderCount: number;
   pendingApprovals: number;
   openExceptions: number;
   needsAttention: DashboardNeedsAttentionItem[];
   recentActivity: DashboardActivityItem[];
+};
+
+interface DashboardContextValue extends DashboardData {
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
 }
+
+const EMPTY_DASHBOARD: DashboardData = {
+  totalStockValue: 0,
+  unvaluedProductCount: 0,
+  lowStockCount: 0,
+  openPurchaseOrderCount: 0,
+  pendingApprovals: 0,
+  openExceptions: 0,
+  needsAttention: [],
+  recentActivity: [],
+};
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
 
@@ -62,8 +79,8 @@ function mapNeedsAttention(item: ApiNeedsAttentionItem): DashboardNeedsAttention
     sku: item.sku,
     productName: item.product_name,
     locationName: item.location_name,
-    onHand: Number(item.on_hand),
-    reorderPoint: item.reorder_point === null ? null : Number(item.reorder_point),
+    onHand: parseDecimal(item.on_hand),
+    reorderPoint: item.reorder_point === null ? null : parseDecimal(item.reorder_point),
     status: mapApiStockStatus(item.status),
   };
 }
@@ -75,88 +92,76 @@ function mapActivity(item: ApiDashboardActivityItem): DashboardActivityItem {
     occurredAt: item.occurred_at,
     title: item.title,
     subtitle: item.subtitle,
-    quantity: item.quantity === null ? null : Number(item.quantity),
+    quantity: item.quantity === null ? null : parseDecimal(item.quantity),
   };
 }
 
+async function fetchDashboard(): Promise<LoadResult<DashboardData>> {
+  try {
+    const [summary, attention, activity] = await Promise.all([
+      api.dashboard.summary(),
+      api.dashboard.needsAttention(),
+      api.dashboard.activity(),
+    ]);
+    return {
+      data: {
+        totalStockValue: parseDecimal(summary.total_stock_value),
+        unvaluedProductCount: summary.unvalued_product_count,
+        lowStockCount: summary.low_stock_count,
+        openPurchaseOrderCount: summary.open_purchase_orders,
+        pendingApprovals: summary.pending_approvals,
+        openExceptions: summary.open_exceptions,
+        needsAttention: attention.items.map(mapNeedsAttention),
+        recentActivity: activity.items.map(mapActivity),
+      },
+      error: null,
+    };
+  } catch (err) {
+    return {
+      data: null,
+      error: err instanceof Error ? err.message : "Could not load dashboard.",
+    };
+  }
+}
+
 export function DashboardProvider({ children }: { children: ReactNode }) {
-  const { isAuthenticated } = useAuth();
-  const [totalStockValue, setTotalStockValue] = useState(0);
-  const [lowStockCount, setLowStockCount] = useState(0);
-  const [openPurchaseOrderCount, setOpenPurchaseOrderCount] = useState(0);
-  const [pendingApprovals, setPendingApprovals] = useState(0);
-  const [openExceptions, setOpenExceptions] = useState(0);
-  const [needsAttention, setNeedsAttention] = useState<DashboardNeedsAttentionItem[]>(
-    [],
-  );
-  const [recentActivity, setRecentActivity] = useState<DashboardActivityItem[]>([]);
+  const { isAuthenticated, isOnboarded } = useAuth();
+  const ready = isAuthenticated && isOnboarded;
+  const [data, setData] = useState<DashboardData>(EMPTY_DASHBOARD);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = useCallback(async () => {
-    if (!isAuthenticated) {
-      setTotalStockValue(0);
-      setLowStockCount(0);
-      setOpenPurchaseOrderCount(0);
-      setPendingApprovals(0);
-      setOpenExceptions(0);
-      setNeedsAttention([]);
-      setRecentActivity([]);
-      setIsLoading(false);
-      return;
-    }
+  const apply = useCallback((result: LoadResult<DashboardData>) => {
+    if (result.data) setData(result.data);
+    setError(result.error);
+    setIsLoading(false);
+  }, []);
 
+  const refresh = useCallback(async () => {
+    if (!ready) return;
     setIsLoading(true);
-    setError(null);
-    try {
-      const [summary, attention, activity] = await Promise.all([
-        api.dashboard.summary(),
-        api.dashboard.needsAttention(),
-        api.dashboard.activity(),
-      ]);
-      setTotalStockValue(Number(summary.total_stock_value));
-      setLowStockCount(summary.low_stock_count);
-      setOpenPurchaseOrderCount(summary.open_purchase_orders);
-      setPendingApprovals(summary.pending_approvals);
-      setOpenExceptions(summary.open_exceptions);
-      setNeedsAttention(attention.items.map(mapNeedsAttention));
-      setRecentActivity(activity.items.map(mapActivity));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not load dashboard.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isAuthenticated]);
+    apply(await fetchDashboard());
+  }, [ready, apply]);
 
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    if (!ready) return;
+    let cancelled = false;
+    void fetchDashboard().then((result) => {
+      if (!cancelled) apply(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready, apply]);
 
   const value = useMemo<DashboardContextValue>(
     () => ({
-      totalStockValue,
-      lowStockCount,
-      openPurchaseOrderCount,
-      pendingApprovals,
-      openExceptions,
-      needsAttention,
-      recentActivity,
-      isLoading,
-      error,
+      ...(ready ? data : EMPTY_DASHBOARD),
+      isLoading: ready && isLoading,
+      error: ready ? error : null,
       refresh,
     }),
-    [
-      totalStockValue,
-      lowStockCount,
-      openPurchaseOrderCount,
-      pendingApprovals,
-      openExceptions,
-      needsAttention,
-      recentActivity,
-      isLoading,
-      error,
-      refresh,
-    ],
+    [ready, data, isLoading, error, refresh],
   );
 
   return (

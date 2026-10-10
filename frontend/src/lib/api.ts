@@ -4,9 +4,16 @@ import {
   clearTokens,
   getAccessToken,
   getRefreshToken,
+  notifySessionExpired,
   setTokens,
 } from "@/lib/auth-storage";
 import type {
+  ApiAuditLog,
+  ApiBusiness,
+  ApiOnboardingStatus,
+  ApiSale,
+  ApiSaleWrite,
+  ApiUser,
   ApiCategory,
   ApiDashboardActivityItem,
   ApiAccountsBySupplierRow,
@@ -127,24 +134,41 @@ export function showApiErrorToast(error: unknown): void {
   toast.error("Something went wrong.");
 }
 
-async function refreshAccessToken(): Promise<boolean> {
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function performRefresh(): Promise<boolean> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return false;
-  const response = await fetch(`${apiBaseUrl()}${API_V1}/auth/refresh`, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ refresh_token: refreshToken }),
-  });
-  if (!response.ok) {
-    clearTokens();
+  try {
+    const response = await fetch(`${apiBaseUrl()}${API_V1}/auth/refresh`, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!response.ok) {
+      clearTokens();
+      notifySessionExpired();
+      return false;
+    }
+    const body = (await response.json()) as ApiTokenResponse;
+    setTokens(body.access_token, body.refresh_token);
+    return true;
+  } catch {
     return false;
   }
-  const body = (await response.json()) as ApiTokenResponse;
-  setTokens(body.access_token, body.refresh_token);
-  return true;
+}
+
+/** Refresh tokens rotate on every use, so concurrent 401s must share one refresh call. */
+function refreshAccessToken(): Promise<boolean> {
+  if (!refreshInFlight) {
+    refreshInFlight = performRefresh().finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -302,24 +326,48 @@ export const api = {
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
     },
-    me(): Promise<{
-      id: string;
-      email: string;
-      full_name: string;
-      role: string;
-      business_id: string;
-    }> {
-      return request(`${API_V1}/auth/me`);
+    me(): Promise<ApiUser> {
+      return request<ApiUser>(`${API_V1}/auth/me`);
+    },
+    updateProfile(body: { full_name?: string; email?: string }): Promise<ApiUser> {
+      return request<ApiUser>(`${API_V1}/auth/me`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      });
+    },
+    changePassword(body: {
+      current_password: string;
+      new_password: string;
+    }): Promise<ApiTokenResponse> {
+      return request<ApiTokenResponse>(`${API_V1}/auth/change-password`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
     },
   },
 
   business: {
-    current(): Promise<{
-      id: string;
-      name: string;
-      currency_code: string;
-    }> {
-      return request(`${API_V1}/businesses/current`);
+    current(): Promise<ApiBusiness> {
+      return request<ApiBusiness>(`${API_V1}/businesses/current`);
+    },
+  },
+
+  auditLog: {
+    list(params: {
+      entity_type?: string;
+      entity_id?: string;
+      action?: string;
+      page?: number;
+      page_size?: number;
+    }): Promise<ApiAuditLog> {
+      const query = new URLSearchParams();
+      if (params.entity_type) query.set("entity_type", params.entity_type);
+      if (params.entity_id) query.set("entity_id", params.entity_id);
+      if (params.action) query.set("action", params.action);
+      if (params.page) query.set("page", String(params.page));
+      if (params.page_size) query.set("page_size", String(params.page_size));
+      const suffix = query.toString() ? `?${query.toString()}` : "";
+      return request<ApiAuditLog>(`${API_V1}/audit-log${suffix}`);
     },
   },
 
@@ -345,8 +393,14 @@ export const api = {
   },
 
   suppliers: {
-    list(): Promise<ApiSupplier[]> {
-      return request<ApiSupplier[]>(`${API_V1}/suppliers`);
+    list(params: { include_archived?: boolean } = {}): Promise<ApiSupplier[]> {
+      const suffix = params.include_archived ? "?include_archived=true" : "";
+      return request<ApiSupplier[]>(`${API_V1}/suppliers${suffix}`);
+    },
+    restore(id: string): Promise<ApiSupplier> {
+      return request<ApiSupplier>(`${API_V1}/suppliers/${id}/restore`, {
+        method: "POST",
+      });
     },
     create(body: ApiSupplierWrite): Promise<ApiSupplier> {
       return request<ApiSupplier>(`${API_V1}/suppliers`, {
@@ -373,10 +427,12 @@ export const api = {
       category_id?: string;
       page?: number;
       page_size?: number;
+      archived?: boolean;
     }): Promise<ApiProductList> {
       const query = new URLSearchParams();
       if (params.search) query.set("search", params.search);
       if (params.category_id) query.set("category_id", params.category_id);
+      if (params.archived) query.set("archived", "true");
       if (params.page) query.set("page", String(params.page));
       if (params.page_size) query.set("page_size", String(params.page_size));
       const suffix = query.toString() ? `?${query.toString()}` : "";
@@ -399,6 +455,11 @@ export const api = {
         method: "DELETE",
       });
     },
+    restore(id: string): Promise<ApiProduct> {
+      return request<ApiProduct>(`${API_V1}/products/${id}/restore`, {
+        method: "POST",
+      });
+    },
     importCsv(file: File, options?: { skipErrors?: boolean }): Promise<ApiImportResult> {
       return uploadCsvFile(`${API_V1}/products/import-csv`, file, options);
     },
@@ -413,6 +474,14 @@ export const api = {
   },
 
   onboarding: {
+    status(): Promise<ApiOnboardingStatus> {
+      return request<ApiOnboardingStatus>(`${API_V1}/onboarding/status`);
+    },
+    complete(): Promise<ApiOnboardingStatus> {
+      return request<ApiOnboardingStatus>(`${API_V1}/onboarding/complete`, {
+        method: "POST",
+      });
+    },
     loadDemoData(): Promise<ApiDemoSeedResult> {
       return request<ApiDemoSeedResult>(`${API_V1}/onboarding/load-demo-data`, {
         method: "POST",
@@ -460,6 +529,12 @@ export const api = {
     },
     recordMovement(body: ApiMovementWrite): Promise<ApiMovement> {
       return request<ApiMovement>(`${API_V1}/inventory/movements`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+    },
+    recordSale(body: ApiSaleWrite): Promise<ApiSale> {
+      return request<ApiSale>(`${API_V1}/inventory/sales`, {
         method: "POST",
         body: JSON.stringify(body),
       });
@@ -540,19 +615,22 @@ export const api = {
 
   settings: {
     business: {
-      update(body: {
-        name?: string;
-        currency_code?: string;
-      }): Promise<{ id: string; name: string; currency_code: string }> {
-        return request(`${API_V1}/settings/business`, {
+      update(body: { name?: string; currency_code?: string }): Promise<ApiBusiness> {
+        return request<ApiBusiness>(`${API_V1}/settings/business`, {
           method: "PATCH",
           body: JSON.stringify(body),
         });
       },
     },
     locations: {
-      list(): Promise<ApiSettingsLocation[]> {
-        return request<ApiSettingsLocation[]>(`${API_V1}/settings/locations`);
+      list(params: { include_archived?: boolean } = {}): Promise<ApiSettingsLocation[]> {
+        const suffix = params.include_archived ? "?include_archived=true" : "";
+        return request<ApiSettingsLocation[]>(`${API_V1}/settings/locations${suffix}`);
+      },
+      restore(id: string): Promise<ApiSettingsLocation> {
+        return request<ApiSettingsLocation>(`${API_V1}/settings/locations/${id}/restore`, {
+          method: "POST",
+        });
       },
       create(body: {
         name: string;
@@ -604,6 +682,12 @@ export const api = {
         return request<ApiTeamUser>(`${API_V1}/settings/users/${userId}/role`, {
           method: "PATCH",
           body: JSON.stringify(body),
+        });
+      },
+      setActive(userId: string, isActive: boolean): Promise<ApiTeamUser> {
+        return request<ApiTeamUser>(`${API_V1}/settings/users/${userId}/active`, {
+          method: "PATCH",
+          body: JSON.stringify({ is_active: isActive }),
         });
       },
     },

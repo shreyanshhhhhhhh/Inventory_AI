@@ -22,6 +22,7 @@ export type NavItem = {
     | "/settings";
   label: string;
   icon: LucideIcon;
+  ownerOnly?: boolean;
 };
 
 export const navItems: NavItem[] = [
@@ -32,5 +33,5 @@ export const navItems: NavItem[] = [
   { href: "/inbox", label: "Agent Inbox", icon: Inbox },
   { href: "/insights", label: "Insights", icon: ChartLine },
   { href: "/accounts", label: "Accounts", icon: Wallet },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];

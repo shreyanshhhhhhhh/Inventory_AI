@@ -39,12 +39,21 @@ interface CatalogContextValue {
   addProduct: (product: ProductWrite) => Promise<Product>;
   updateProduct: (id: string, product: ProductWrite) => Promise<void>;
   deleteProduct: (id: string) => Promise<void>;
+  restoreProduct: (id: string) => Promise<void>;
+  /** When true the product list shows archived products only. */
+  showArchivedProducts: boolean;
+  setShowArchivedProducts: (value: boolean) => void;
   categories: Category[];
   categoriesLoading: boolean;
   addCategory: (name: string) => Promise<Category>;
+  refreshCategories: () => Promise<void>;
   suppliers: Supplier[];
   suppliersLoading: boolean;
   suppliersError: string | null;
+  /** When true the supplier list also includes archived suppliers (check `isActive`). */
+  includeArchivedSuppliers: boolean;
+  setIncludeArchivedSuppliers: (value: boolean) => void;
+  restoreSupplier: (id: string) => Promise<void>;
   refreshSuppliers: () => Promise<void>;
   addSupplier: (supplier: Omit<Supplier, "id" | "isActive">) => Promise<Supplier>;
   updateSupplier: (
@@ -66,6 +75,8 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   const [productsError, setProductsError] = useState<string | null>(null);
   const [productSearch, setProductSearch] = useState("");
   const [productCategoryFilter, setProductCategoryFilter] = useState("all");
+  const [showArchivedProducts, setShowArchivedProducts] = useState(false);
+  const [includeArchivedSuppliers, setIncludeArchivedSuppliers] = useState(false);
 
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoriesLoading, setCategoriesLoading] = useState(true);
@@ -84,6 +95,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
           productCategoryFilter === "all" ? undefined : productCategoryFilter,
         page: productsPage,
         page_size: productsPageSize,
+        archived: showArchivedProducts,
       });
       setProducts(response.items.map(mapProduct));
       setProductsTotal(response.total);
@@ -94,7 +106,13 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     } finally {
       setProductsLoading(false);
     }
-  }, [productSearch, productCategoryFilter, productsPage, productsPageSize]);
+  }, [
+    productSearch,
+    productCategoryFilter,
+    productsPage,
+    productsPageSize,
+    showArchivedProducts,
+  ]);
 
   const refreshCategories = useCallback(async () => {
     setCategoriesLoading(true);
@@ -110,7 +128,9 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     setSuppliersLoading(true);
     setSuppliersError(null);
     try {
-      const response = await api.suppliers.list();
+      const response = await api.suppliers.list({
+        include_archived: includeArchivedSuppliers,
+      });
       setSuppliers(response.map(mapSupplier));
     } catch (error) {
       setSuppliersError(
@@ -119,16 +139,10 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     } finally {
       setSuppliersLoading(false);
     }
-  }, []);
+  }, [includeArchivedSuppliers]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setProducts([]);
-      setProductsTotal(0);
-      setProductsLoading(false);
-      setProductsError(null);
-      return;
-    }
+    if (!isAuthenticated) return;
     const timer = window.setTimeout(() => {
       void refreshProducts();
     }, 0);
@@ -136,14 +150,7 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated, refreshProducts]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setCategories([]);
-      setCategoriesLoading(false);
-      setSuppliers([]);
-      setSuppliersLoading(false);
-      setSuppliersError(null);
-      return;
-    }
+    if (!isAuthenticated) return;
     const timer = window.setTimeout(() => {
       void refreshCategories();
       void refreshSuppliers();
@@ -186,6 +193,22 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
     [refreshProducts],
   );
 
+  const restoreProduct = useCallback(
+    async (id: string) => {
+      await api.products.restore(id);
+      await refreshProducts();
+    },
+    [refreshProducts],
+  );
+
+  const restoreSupplier = useCallback(
+    async (id: string) => {
+      await api.suppliers.restore(id);
+      await refreshSuppliers();
+    },
+    [refreshSuppliers],
+  );
+
   const addSupplier = useCallback(
     async (supplier: Omit<Supplier, "id" | "isActive">) => {
       const created = mapSupplier(
@@ -218,33 +241,46 @@ export function CatalogProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<CatalogContextValue>(
     () => ({
-      products,
-      productsTotal,
+      products: isAuthenticated ? products : [],
+      productsTotal: isAuthenticated ? productsTotal : 0,
       productsPage,
       productsPageSize,
-      productsLoading,
-      productsError,
+      productsLoading: isAuthenticated && productsLoading,
+      productsError: isAuthenticated ? productsError : null,
       productSearch,
       productCategoryFilter,
+      showArchivedProducts,
       setProductSearch,
       setProductCategoryFilter,
+      setShowArchivedProducts,
       setProductsPage,
       refreshProducts,
       addProduct,
       updateProduct,
       deleteProduct,
-      categories,
-      categoriesLoading,
+      restoreProduct,
+      categories: isAuthenticated ? categories : [],
+      categoriesLoading: isAuthenticated && categoriesLoading,
       addCategory,
-      suppliers,
-      suppliersLoading,
-      suppliersError,
+      refreshCategories,
+      suppliers: isAuthenticated ? suppliers : [],
+      suppliersLoading: isAuthenticated && suppliersLoading,
+      suppliersError: isAuthenticated ? suppliersError : null,
+      includeArchivedSuppliers,
+      setIncludeArchivedSuppliers,
       refreshSuppliers,
       addSupplier,
       updateSupplier,
+      restoreSupplier,
       getSupplierById,
     }),
     [
+      isAuthenticated,
+      showArchivedProducts,
+      includeArchivedSuppliers,
+      restoreProduct,
+      restoreSupplier,
+      refreshCategories,
       products,
       productsTotal,
       productsPage,
@@ -300,9 +336,15 @@ export function useProducts() {
     addProduct,
     updateProduct,
     deleteProduct,
+    restoreProduct,
+    showArchivedProducts,
+    setShowArchivedProducts,
   } = useCatalogContext();
 
   return {
+    restoreProduct,
+    showArchived: showArchivedProducts,
+    setShowArchived: setShowArchivedProducts,
     products,
     total: productsTotal,
     page: productsPage,
@@ -322,8 +364,14 @@ export function useProducts() {
 }
 
 export function useCategories() {
-  const { categories, categoriesLoading, addCategory } = useCatalogContext();
-  return { categories, isLoading: categoriesLoading, addCategory };
+  const { categories, categoriesLoading, addCategory, refreshCategories } =
+    useCatalogContext();
+  return {
+    categories,
+    isLoading: categoriesLoading,
+    addCategory,
+    refresh: refreshCategories,
+  };
 }
 
 export function useSuppliers() {
@@ -335,9 +383,15 @@ export function useSuppliers() {
     addSupplier,
     updateSupplier,
     getSupplierById,
+    restoreSupplier,
+    includeArchivedSuppliers,
+    setIncludeArchivedSuppliers,
   } = useCatalogContext();
 
   return {
+    restoreSupplier,
+    includeArchived: includeArchivedSuppliers,
+    setIncludeArchived: setIncludeArchivedSuppliers,
     suppliers,
     isLoading: suppliersLoading,
     error: suppliersError,

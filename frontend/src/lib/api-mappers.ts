@@ -20,26 +20,12 @@ import type {
   StockMovement,
   Supplier,
 } from "@/types";
+import { parseDecimal, toDecimalString } from "@/lib/decimal";
 
-function parseMoney(value: string | null | undefined): number {
-  if (value === null || value === undefined || value === "") return 0;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function parseQuantity(value: string | null | undefined): number {
-  if (value === null || value === undefined || value === "") return 0;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function toMoneyString(value: number): string {
-  return value.toFixed(2);
-}
-
-function toQuantityString(value: number): string {
-  return String(value);
-}
+const parseMoney = parseDecimal;
+const parseQuantity = parseDecimal;
+const toMoneyString = (value: number): string => toDecimalString(value);
+const toQuantityString = (value: number): string => toDecimalString(value);
 
 export function mapCategory(api: ApiCategory): Category {
   return { id: api.id, name: api.name };

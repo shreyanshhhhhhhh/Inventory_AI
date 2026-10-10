@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import {
   ChevronRight,
@@ -42,10 +42,11 @@ function Brand() {
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
+  const { isOwner } = useAuth();
 
   return (
     <nav className="flex flex-col gap-1" aria-label="Primary">
-      {navItems.map((item) => {
+      {navItems.filter((item) => isOwner || !item.ownerOnly).map((item) => {
         const Icon = item.icon;
         const active = isNavActive(pathname, item.href);
         return (
@@ -68,8 +69,9 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function SidebarFooter() {
+function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
   const { user, business, logout } = useAuth();
+  const router = useRouter();
 
   return (
     <div className="mt-auto border-t border-sidebar-border p-3">
@@ -91,7 +93,12 @@ function SidebarFooter() {
           </span>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-48">
-          <DropdownMenuItem disabled>
+          <DropdownMenuItem
+            onClick={() => {
+              onNavigate?.();
+              router.push("/accounts");
+            }}
+          >
             <User />
             Profile
           </DropdownMenuItem>
@@ -115,7 +122,7 @@ function MobileSidebarContent({ onNavigate }: { onNavigate: () => void }) {
       <div className="px-2 py-2">
         <NavLinks onNavigate={onNavigate} />
       </div>
-      <SidebarFooter />
+      <SidebarFooter onNavigate={onNavigate} />
     </div>
   );
 }

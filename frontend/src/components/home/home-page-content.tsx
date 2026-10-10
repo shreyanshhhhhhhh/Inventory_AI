@@ -7,6 +7,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { PageHeader } from "@/components/common/page-header";
 import { StatCard } from "@/components/common/stat-card";
 import { StatusBadge } from "@/components/common/status-badge";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -21,6 +22,7 @@ import { formatCurrency, formatDateTime } from "@/lib/format";
 export function HomePageContent() {
   const {
     totalStockValue,
+    unvaluedProductCount,
     lowStockCount,
     openPurchaseOrderCount,
     pendingApprovals,
@@ -28,6 +30,7 @@ export function HomePageContent() {
     recentActivity,
     isLoading,
     error,
+    refresh,
   } = useDashboard();
 
   if (isLoading) {
@@ -57,13 +60,24 @@ export function HomePageContent() {
         description="A quick read on stock health, purchasing, and recent activity."
       />
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
+      {error ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-destructive/40 p-3 text-sm text-destructive">
+          <span>{error}</span>
+          <Button variant="outline" size="sm" onClick={() => void refresh()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Total stock value"
           value={formatCurrency(totalStockValue)}
-          subtext="Based on on-hand × unit cost"
+          subtext={
+            unvaluedProductCount > 0
+              ? `On-hand × preferred supplier cost · ${unvaluedProductCount} product${unvaluedProductCount === 1 ? "" : "s"} without a cost excluded`
+              : "On-hand × preferred supplier cost"
+          }
           icon={Wallet}
         />
         <StatCard

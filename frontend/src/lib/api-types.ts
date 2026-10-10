@@ -35,10 +35,57 @@ export type ApiProductList = {
   page_size: number;
 };
 
+export type ApiUser = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: "owner" | "staff";
+  business_id: string;
+};
+
 export type ApiTokenResponse = {
   access_token: string;
   refresh_token: string;
   token_type: string;
+  user: ApiUser;
+};
+
+export type ApiBusiness = {
+  id: string;
+  name: string;
+  currency_code: string;
+  onboarding_completed: boolean;
+};
+
+export type ApiOnboardingStatus = {
+  completed: boolean;
+  completed_at: string | null;
+  business_name: string;
+  currency_code: string;
+  location_count: number;
+  product_count: number;
+  supplier_count: number;
+  can_complete: boolean;
+};
+
+export type ApiAuditEntry = {
+  id: string;
+  created_at: string;
+  actor_type: "user" | "agent";
+  actor_user_id: string | null;
+  actor_name: string | null;
+  action: string;
+  entity_type: string;
+  entity_id: string;
+  before_data: Record<string, unknown> | null;
+  after_data: Record<string, unknown> | null;
+};
+
+export type ApiAuditLog = {
+  items: ApiAuditEntry[];
+  total: number;
+  page: number;
+  page_size: number;
 };
 
 export type ApiProductWrite = {
@@ -115,6 +162,17 @@ export type ApiMovementWrite = {
   destination_location_id?: string | null;
 };
 
+export type ApiSaleWrite = {
+  location_id: string;
+  lines: Array<{ product_id: string; quantity: string }>;
+  note?: string | null;
+};
+
+export type ApiSale = {
+  sale_group_id: string;
+  items: ApiMovement[];
+};
+
 export type ApiPurchaseOrderLine = {
   id: string;
   product_id: string;
@@ -176,6 +234,7 @@ export type ApiImportResult = {
 
 export type ApiDashboardSummary = {
   total_stock_value: string;
+  unvalued_product_count: number;
   low_stock_count: number;
   open_purchase_orders: number;
   pending_approvals: number;
@@ -227,6 +286,7 @@ export type ApiTopSellers = {
 
 export type ApiAccountsSummary = {
   stock_value: string;
+  unvalued_product_count: number;
   open_po_value: string;
   payables_due: string;
 };
@@ -244,13 +304,14 @@ export type ApiSettingsLocation = {
   name: string;
   address: string | null;
   is_default: boolean;
+  is_active: boolean;
 };
 
 export type ApiTeamUser = {
   id: string;
   email: string;
   full_name: string;
-  role: string;
+  role: "owner" | "staff";
   is_active: boolean;
 };
 

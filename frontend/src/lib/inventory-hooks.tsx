@@ -14,6 +14,7 @@ import { mapLocation, mapMovement, mapStockLevel } from "@/lib/api-mappers";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useProducts } from "@/lib/catalog-hooks";
+import { toDecimalString } from "@/lib/decimal";
 import type { Location, MovementType, StockLevel, StockMovement } from "@/types";
 
 type StockRow = StockLevel & {
@@ -49,6 +50,7 @@ interface InventoryContextValue {
   setMovementTypeFilter: (value: string) => void;
   refreshStock: () => Promise<void>;
   refreshMovements: () => Promise<void>;
+  refreshLocations: () => Promise<void>;
   getStockLevel: (productId: string, locationId: string) => StockLevel | undefined;
   getProductById: (id: string) => ReturnType<typeof useProducts>["products"][number] | undefined;
   getLocationById: (id: string) => Location | undefined;
@@ -57,6 +59,14 @@ interface InventoryContextValue {
     locationId: string;
     type: MovementType;
     quantity: number;
+    note: string;
+    /** Required when `type` is "transfer". */
+    destinationLocationId?: string;
+  }) => Promise<void>;
+  /** Posts all lines atomically as one sale (shared sale_group_id). */
+  recordSale: (input: {
+    locationId: string;
+    lines: Array<{ productId: string; quantity: number }>;
     note: string;
   }) => Promise<void>;
 }
@@ -125,14 +135,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   }, [movementTypeFilter]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setLocations([]);
-      setStockLevels([]);
-      setMovements([]);
-      setStockLoading(false);
-      setMovementsLoading(false);
-      return;
-    }
+    if (!isAuthenticated) return;
     const timer = window.setTimeout(() => {
       void refreshLocations();
     }, 0);
@@ -180,17 +183,39 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       type: MovementType;
       quantity: number;
       note: string;
+      destinationLocationId?: string;
     }) => {
       const quantityText =
         input.type === "adjustment"
-          ? String(input.quantity)
-          : String(Math.abs(input.quantity));
+          ? toDecimalString(input.quantity)
+          : toDecimalString(Math.abs(input.quantity));
 
       await api.inventory.recordMovement({
         product_id: input.productId,
         location_id: input.locationId,
         type: input.type,
         quantity: quantityText,
+        note: input.note.trim() || null,
+        destination_location_id:
+          input.type === "transfer" ? (input.destinationLocationId ?? null) : null,
+      });
+      await Promise.all([refreshStock(), refreshMovements()]);
+    },
+    [refreshStock, refreshMovements],
+  );
+
+  const recordSale = useCallback(
+    async (input: {
+      locationId: string;
+      lines: Array<{ productId: string; quantity: number }>;
+      note: string;
+    }) => {
+      await api.inventory.recordSale({
+        location_id: input.locationId,
+        lines: input.lines.map((line) => ({
+          product_id: line.productId,
+          quantity: toDecimalString(Math.abs(line.quantity)),
+        })),
         note: input.note.trim() || null,
       });
       await Promise.all([refreshStock(), refreshMovements()]);
@@ -201,11 +226,11 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const value = useMemo<InventoryContextValue>(
     () => ({
       products,
-      locations,
-      stockLevels,
-      movements,
-      stockLoading,
-      movementsLoading,
+      locations: isAuthenticated ? locations : [],
+      stockLevels: isAuthenticated ? stockLevels : [],
+      movements: isAuthenticated ? movements : [],
+      stockLoading: isAuthenticated && stockLoading,
+      movementsLoading: isAuthenticated && movementsLoading,
       stockError,
       movementsError,
       stockSearch,
@@ -218,12 +243,15 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       setMovementTypeFilter,
       refreshStock,
       refreshMovements,
+      refreshLocations,
       getStockLevel,
       getProductById,
       getLocationById,
       recordMovement,
+      recordSale,
     }),
     [
+      isAuthenticated,
       products,
       locations,
       stockLevels,
@@ -238,10 +266,12 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
       movementTypeFilter,
       refreshStock,
       refreshMovements,
+      refreshLocations,
       getStockLevel,
       getProductById,
       getLocationById,
       recordMovement,
+      recordSale,
     ],
   );
 

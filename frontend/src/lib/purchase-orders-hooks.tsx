@@ -14,6 +14,8 @@ import { mapPurchaseOrder } from "@/lib/api-mappers";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { useProducts } from "@/lib/catalog-hooks";
+import { toDecimalString } from "@/lib/decimal";
+import { errorMessage, type LoadResult } from "@/lib/load-result";
 import type { PurchaseOrder, PurchaseOrderStatus } from "@/types";
 
 type PurchaseOrderRow = PurchaseOrder & {
@@ -52,6 +54,23 @@ interface PurchaseOrdersContextValue {
 
 const PurchaseOrdersContext = createContext<PurchaseOrdersContextValue | null>(null);
 
+async function fetchPurchaseOrders(
+  statusFilter: string,
+  supplierFilter: string,
+): Promise<LoadResult<PurchaseOrderRow[]>> {
+  try {
+    const response = await api.purchaseOrders.list({
+      status: statusFilter === "all" ? undefined : statusFilter,
+      supplier_id: supplierFilter === "all" ? undefined : supplierFilter,
+      page: 1,
+      page_size: 100,
+    });
+    return { data: response.items.map(mapPurchaseOrder), error: null };
+  } catch (err) {
+    return { data: null, error: errorMessage(err, "Could not load purchase orders.") };
+  }
+}
+
 export function PurchaseOrdersProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
   const { products } = useProducts();
@@ -61,37 +80,28 @@ export function PurchaseOrdersProvider({ children }: { children: ReactNode }) {
   const [statusFilter, setStatusFilter] = useState("all");
   const [supplierFilter, setSupplierFilter] = useState("all");
 
+  const apply = useCallback((result: LoadResult<PurchaseOrderRow[]>) => {
+    if (result.data) setPurchaseOrders(result.data);
+    setError(result.error);
+    setIsLoading(false);
+  }, []);
+
   const refreshPurchaseOrders = useCallback(async () => {
+    if (!isAuthenticated) return;
     setIsLoading(true);
-    setError(null);
-    try {
-      const response = await api.purchaseOrders.list({
-        status: statusFilter === "all" ? undefined : statusFilter,
-        supplier_id: supplierFilter === "all" ? undefined : supplierFilter,
-        page: 1,
-        page_size: 100,
-      });
-      setPurchaseOrders(response.items.map(mapPurchaseOrder));
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not load purchase orders.",
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  }, [statusFilter, supplierFilter]);
+    apply(await fetchPurchaseOrders(statusFilter, supplierFilter));
+  }, [isAuthenticated, statusFilter, supplierFilter, apply]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setPurchaseOrders([]);
-      setIsLoading(false);
-      return;
-    }
-    const timer = window.setTimeout(() => {
-      void refreshPurchaseOrders();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [isAuthenticated, refreshPurchaseOrders]);
+    if (!isAuthenticated) return;
+    let cancelled = false;
+    void fetchPurchaseOrders(statusFilter, supplierFilter).then((result) => {
+      if (!cancelled) apply(result);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, statusFilter, supplierFilter, apply]);
 
   const getProductById = useCallback(
     (id: string) => products.find((product) => product.id === id),
@@ -121,8 +131,8 @@ export function PurchaseOrdersProvider({ children }: { children: ReactNode }) {
           expected_date: input.expectedDate || null,
           line_items: input.lineItems.map((line) => ({
             product_id: line.productId,
-            quantity: String(line.quantity),
-            unit_cost: line.unitCost > 0 ? line.unitCost.toFixed(2) : null,
+            quantity: toDecimalString(line.quantity),
+            unit_cost: line.unitCost > 0 ? toDecimalString(line.unitCost) : null,
           })),
         }),
       );

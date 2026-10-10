@@ -12,32 +12,27 @@ import {
 } from "react";
 
 import { api, ApiError } from "@/lib/api";
+import type { ApiBusiness, ApiUser } from "@/lib/api-types";
 import {
   clearTokens,
   getAccessToken,
   getRefreshToken,
+  onSessionExpired,
   setTokens,
 } from "@/lib/auth-storage";
+import { setDisplayCurrency } from "@/lib/format";
 
-export type AuthUser = {
-  id: string;
-  email: string;
-  full_name: string;
-  role: string;
-  business_id: string;
-};
+export type AuthUser = ApiUser;
 
-export type AuthBusiness = {
-  id: string;
-  name: string;
-  currency_code: string;
-};
+export type AuthBusiness = ApiBusiness;
 
 interface AuthContextValue {
   user: AuthUser | null;
   business: AuthBusiness | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isOwner: boolean;
+  isOnboarded: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (input: {
     full_name: string;
@@ -47,6 +42,8 @@ interface AuthContextValue {
   }) => Promise<void>;
   logout: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  /** Store a new token pair (e.g. after a password change) and reload the session. */
+  applyTokens: (accessToken: string, refreshToken: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -55,8 +52,7 @@ async function loadSession(): Promise<{
   user: AuthUser;
   business: AuthBusiness;
 }> {
-  const me = await api.auth.me();
-  const business = await api.business.current();
+  const [me, business] = await Promise.all([api.auth.me(), api.business.current()]);
   return { user: me, business };
 }
 
@@ -73,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     const session = await loadSession();
+    setDisplayCurrency(session.business.currency_code);
     setUser(session.user);
     setBusiness(session.business);
   }, []);
@@ -102,7 +99,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshSession]);
 
-  const persistTokens = useCallback(
+  useEffect(
+    () =>
+      onSessionExpired(() => {
+        setUser(null);
+        setBusiness(null);
+        router.replace("/login");
+      }),
+    [router],
+  );
+
+  const applyTokens = useCallback(
     async (accessToken: string, refreshToken: string) => {
       setTokens(accessToken, refreshToken);
       await refreshSession();
@@ -113,10 +120,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(
     async (email: string, password: string) => {
       const tokens = await api.auth.login({ email, password });
-      await persistTokens(tokens.access_token, tokens.refresh_token);
+      await applyTokens(tokens.access_token, tokens.refresh_token);
       router.replace("/");
     },
-    [persistTokens, router],
+    [applyTokens, router],
   );
 
   const signup = useCallback(
@@ -127,10 +134,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       business_name: string;
     }) => {
       const tokens = await api.auth.signup(input);
-      await persistTokens(tokens.access_token, tokens.refresh_token);
-      router.replace("/");
+      await applyTokens(tokens.access_token, tokens.refresh_token);
+      router.replace("/onboarding");
     },
-    [persistTokens, router],
+    [applyTokens, router],
   );
 
   const logout = useCallback(async () => {
@@ -155,12 +162,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       business,
       isLoading,
       isAuthenticated: user !== null,
+      isOwner: user?.role === "owner",
+      isOnboarded: business?.onboarding_completed ?? false,
       login,
       signup,
       logout,
       refreshSession,
+      applyTokens,
     }),
-    [user, business, isLoading, login, signup, logout, refreshSession],
+    [user, business, isLoading, login, signup, logout, refreshSession, applyTokens],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
