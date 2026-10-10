@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -53,15 +53,17 @@ export function CsvImportDialog({
   const [skipErrors, setSkipErrors] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<ApiImportResult | null>(null);
+  const [wasOpen, setWasOpen] = useState(open);
 
-  useEffect(() => {
-    if (!open) {
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) {
       setFile(null);
       setSkipErrors(false);
       setResult(null);
       setSubmitting(false);
     }
-  }, [open]);
+  }
 
   const handleImport = async () => {
     if (!file) {
