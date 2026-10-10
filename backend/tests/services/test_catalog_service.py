@@ -5,20 +5,24 @@ from sqlalchemy import func, select
 
 from app.models import AuditLog, Category, Product, Supplier
 from app.repositories.catalog import get_product_row
-from app.services.auth import signup
 from app.services.catalog import (
     CatalogError,
     archive_product,
+    archive_supplier,
+    list_suppliers,
+    restore_product,
+    restore_supplier,
     create_category,
     create_product,
     create_supplier,
     list_products,
     update_product,
 )
+from tests.helpers.tenant import signup_service_tenant
 
 
 def _owner(db):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Ada Owner",
         email="catalog-owner@example.com",
@@ -28,7 +32,7 @@ def _owner(db):
 
 
 def _other_owner(db):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Bea Owner",
         email="catalog-other@example.com",
@@ -278,3 +282,46 @@ def test_update_product_with_preferred_supplier(db) -> None:
     assert row is not None
     assert row.preferred_supplier_id == supplier.id
     assert row.preferred_supplier_name == "Summit Beverage"
+
+def test_archived_product_and_supplier_can_be_restored(db) -> None:
+    owner = _owner(db)
+    business_id = owner.user.business_id
+    supplier = create_supplier(
+        db,
+        business_id=business_id,
+        actor_user_id=owner.user.id,
+        name="Restorable Supplier",
+        email=None,
+        phone=None,
+        lead_time_days=1,
+    )
+    product = create_product(
+        db,
+        business_id=business_id,
+        actor_user_id=owner.user.id,
+        sku="RESTORE-1",
+        name="Restorable",
+        category_id=None,
+        unit="each",
+        cost=Decimal("1.00"),
+        price=Decimal("2.00"),
+        reorder_point=None,
+        safety_stock=None,
+        preferred_supplier_id=None,
+    )
+    archive_product(db, business_id=business_id, actor_user_id=owner.user.id, product_id=product.id)
+    archive_supplier(db, business_id=business_id, actor_user_id=owner.user.id, supplier_id=supplier.id)
+
+    archived_rows, archived_total = list_products(
+        db, business_id=business_id, search=None, category_id=None, page=1, page_size=10, archived=True
+    )
+    assert archived_total == 1 and archived_rows[0].id == product.id
+    assert list_suppliers(db, business_id=business_id) == []
+
+    restored = restore_product(db, business_id=business_id, actor_user_id=owner.user.id, product_id=product.id)
+    assert restored.archived_at is None
+    restore_supplier(db, business_id=business_id, actor_user_id=owner.user.id, supplier_id=supplier.id)
+    assert [item.id for item in list_suppliers(db, business_id=business_id)] == [supplier.id]
+
+    actions = set(db.scalars(select(AuditLog.action).where(AuditLog.business_id == business_id)))
+    assert {"product.restore", "supplier.restore"} <= actions

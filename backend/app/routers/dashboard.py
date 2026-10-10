@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import require_onboarded
 from app.db import get_db
 from app.models import User
 from app.schemas.dashboard import (
@@ -24,7 +24,7 @@ def _require_business(user: User) -> str:
 
 @router.get("/summary", response_model=DashboardSummaryResponse)
 def dashboard_summary_route(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_onboarded),
     db: Session = Depends(get_db),
 ) -> DashboardSummaryResponse:
     business_id = _require_business(user)
@@ -34,7 +34,7 @@ def dashboard_summary_route(
 
 @router.get("/needs-attention", response_model=NeedsAttentionResponse)
 def dashboard_needs_attention_route(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_onboarded),
     db: Session = Depends(get_db),
 ) -> NeedsAttentionResponse:
     business_id = _require_business(user)
@@ -46,7 +46,7 @@ def dashboard_needs_attention_route(
 
 @router.get("/activity", response_model=DashboardActivityResponse)
 def dashboard_activity_route(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_onboarded),
     db: Session = Depends(get_db),
 ) -> DashboardActivityResponse:
     business_id = _require_business(user)

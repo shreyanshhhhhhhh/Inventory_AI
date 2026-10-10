@@ -24,6 +24,7 @@ def _business_payload(business: Business) -> dict[str, object]:
         "id": business.id,
         "name": business.name,
         "currency_code": business.currency_code,
+        "onboarding_completed": business.onboarding_completed_at is not None,
     }
 
 
@@ -33,6 +34,7 @@ def _location_payload(location: Location) -> dict[str, object]:
         "name": location.name,
         "address": location.address,
         "is_default": location.is_default,
+        "is_active": location.archived_at is None,
     }
 
 
@@ -60,10 +62,16 @@ def update_business_profile(
         raise SettingsError("Business not found.", status_code=404, code="not_found")
 
     before = _business_payload(business)
+    if currency_code is not None and currency_code != business.currency_code:
+        if business.onboarding_completed_at is not None:
+            raise SettingsError(
+                "Currency is set during onboarding and cannot be changed afterward.",
+                status_code=409,
+                code="currency_locked",
+            )
+        business.currency_code = currency_code
     if name is not None:
         business.name = name
-    if currency_code is not None:
-        business.currency_code = currency_code
     session.flush()
 
     after = _business_payload(business)
@@ -82,11 +90,57 @@ def update_business_profile(
     return after
 
 
-def list_locations(session: Session, *, business_id: str) -> list[dict[str, object]]:
-    return [
-        _location_payload(location)
-        for location in inventory_repo.list_locations(session, business_id)
-    ]
+def list_locations(
+    session: Session,
+    *,
+    business_id: str,
+    include_archived: bool = False,
+) -> list[dict[str, object]]:
+    locations = (
+        inventory_repo.list_all_locations(session, business_id)
+        if include_archived
+        else inventory_repo.list_locations(session, business_id)
+    )
+    return [_location_payload(location) for location in locations]
+
+
+def restore_location(
+    session: Session,
+    *,
+    business_id: str,
+    actor_user_id: str,
+    location_id: str,
+) -> dict[str, object]:
+    location = inventory_repo.get_location(session, business_id, location_id, include_archived=True)
+    if location is None:
+        raise SettingsError("Location not found.", status_code=404, code="not_found")
+    before = _location_payload(location)
+    if location.archived_at is None:
+        return before
+    location.archived_at = None
+    try:
+        session.flush()
+    except IntegrityError as exc:
+        session.rollback()
+        raise SettingsError(
+            "A location with this name already exists.",
+            status_code=409,
+            code="conflict",
+        ) from exc
+    after = _location_payload(location)
+    log_action(
+        session,
+        business_id=business_id,
+        actor_user_id=actor_user_id,
+        action="location.restore",
+        entity_type="location",
+        entity_id=location.id,
+        before_data=before,
+        after_data=after,
+    )
+    session.commit()
+    session.refresh(location)
+    return after
 
 
 def create_location(
@@ -234,7 +288,7 @@ def archive_location(
         entity_type="location",
         entity_id=location.id,
         before_data=before,
-        after_data={"id": location.id, "archived_at": location.archived_at.isoformat()},
+        after_data={**_location_payload(location), "archived_at": location.archived_at.isoformat()},
     )
     session.commit()
 
@@ -256,7 +310,11 @@ def _get_or_create_autonomy_rules(session: Session, business_id: str) -> Autonom
 
 
 def get_autonomy_rules(session: Session, *, business_id: str) -> dict[str, object]:
-    rules = _get_or_create_autonomy_rules(session, business_id)
+    rules = session.scalar(
+        select(AutonomyRules).where(AutonomyRules.business_id == business_id)
+    )
+    if rules is None:
+        return {"auto_approve_below_amount": None}
     return _autonomy_rules_data(rules)
 
 

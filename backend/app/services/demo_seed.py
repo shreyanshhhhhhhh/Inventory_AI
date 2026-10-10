@@ -5,13 +5,12 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Business, Category, Product, Supplier
+from app.models import Category, Product, Supplier
 from app.models.types import new_id, utcnow
-from app.repositories import catalog as catalog_repo
 from app.repositories import inventory as inventory_repo
 from app.services.audit import log_action
 from app.services.catalog import _set_preferred_supplier
-from app.services.inventory import post_movement
+from app.services.inventory import InventoryError, post_movement
 from app.services.purchase_orders import create_po, transition_po
 
 
@@ -44,6 +43,27 @@ class DemoSeedError(Exception):
         super().__init__(message)
 
 
+def _audit_create(
+    session: Session,
+    *,
+    business_id: str,
+    actor_user_id: str,
+    entity_type: str,
+    entity_id: str,
+    data: dict[str, object],
+) -> None:
+    log_action(
+        session,
+        business_id=business_id,
+        actor_user_id=actor_user_id,
+        action=f"{entity_type}.create",
+        entity_type=entity_type,
+        entity_id=entity_id,
+        before_data=None,
+        after_data={"id": entity_id, **data, "source": "demo_data"},
+    )
+
+
 def _product_count(session: Session, business_id: str) -> int:
     return int(
         session.scalar(
@@ -72,11 +92,23 @@ def load_demo_data(
         raise DemoSeedError("At least one location is required.", code="bad_request")
     default_location = next((loc for loc in locations if loc.is_default), locations[0])
 
+    today = utcnow().date()
+    start_date = today - timedelta(days=364)
+    opening_at = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+
     categories: list[Category] = []
     for name in CATEGORY_NAMES:
         category = Category(id=new_id(), business_id=business_id, name=name)
         session.add(category)
         categories.append(category)
+        _audit_create(
+            session,
+            business_id=business_id,
+            actor_user_id=actor_user_id,
+            entity_type="category",
+            entity_id=category.id,
+            data={"name": name},
+        )
     session.flush()
 
     suppliers: list[Supplier] = []
@@ -89,6 +121,14 @@ def load_demo_data(
         )
         session.add(supplier)
         suppliers.append(supplier)
+        _audit_create(
+            session,
+            business_id=business_id,
+            actor_user_id=actor_user_id,
+            entity_type="supplier",
+            entity_id=supplier.id,
+            data={"name": name, "lead_time_days": lead_time},
+        )
     session.flush()
 
     products: list[Product] = []
@@ -96,7 +136,7 @@ def load_demo_data(
         category = categories[(index - 1) % len(categories)]
         supplier = suppliers[(index - 1) % len(suppliers)]
         sku = f"DEMO-{index:03d}"
-        cost = Decimal(str(round(rng.uniform(0.75, 12.5), 2)))
+        cost = Decimal(rng.randint(75, 1250)) / Decimal(100)
         price = (cost * Decimal("1.35")).quantize(Decimal("0.01"))
         reorder_point = Decimal(str(rng.randint(5, 25)))
         product = Product(
@@ -122,8 +162,22 @@ def load_demo_data(
             lead_time_days=supplier.lead_time_days,
         )
         products.append(product)
+        _audit_create(
+            session,
+            business_id=business_id,
+            actor_user_id=actor_user_id,
+            entity_type="product",
+            entity_id=product.id,
+            data={
+                "sku": sku,
+                "name": product.name,
+                "cost": str(cost),
+                "price": str(price),
+                "preferred_supplier_id": supplier.id,
+            },
+        )
 
-        starting_stock = Decimal(str(rng.randint(30, 180)))
+        starting_stock = Decimal(rng.randint(30, 180))
         post_movement(
             session,
             business_id=business_id,
@@ -133,13 +187,12 @@ def load_demo_data(
             movement_type="receipt",
             quantity=starting_stock,
             note="Demo starting stock",
+            occurred_at=opening_at,
             commit=False,
         )
 
     stock_movements_created = PRODUCT_COUNT
     sale_movements_created = 0
-    today = utcnow().date()
-    start_date = today - timedelta(days=364)
     spike_days = set(rng.sample(range(365), 5))
 
     for day_offset in range(365):
@@ -156,7 +209,7 @@ def load_demo_data(
         day_products = rng.sample(products, daily_product_count)
 
         for product in day_products:
-            quantity = Decimal(str(max(1, int(rng.randint(1, 4) * spike))))
+            quantity = Decimal(max(1, int(rng.randint(1, 4) * spike)))
             try:
                 post_movement(
                     session,
@@ -171,7 +224,7 @@ def load_demo_data(
                     commit=False,
                 )
                 sale_movements_created += 1
-            except Exception:
+            except InventoryError:
                 continue
 
     log_action(
@@ -188,10 +241,6 @@ def load_demo_data(
             "categories_created": len(CATEGORY_NAMES),
         },
     )
-
-    business = session.get(Business, business_id)
-    if business is not None:
-        business.onboarding_completed_at = utcnow()
 
     session.commit()
 

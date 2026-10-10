@@ -19,11 +19,17 @@ import app.models  # noqa: F401
 from app.db import SessionLocal
 from app.models import User
 from app.services.demo_seed import DemoSeedError, load_demo_data
+from app.services.onboarding import complete_onboarding
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Load demo data for a business.")
     parser.add_argument("--email", required=True, help="Owner email for the target business.")
+    parser.add_argument(
+        "--keep-onboarding-open",
+        action="store_true",
+        help="Do not mark onboarding complete after loading the data.",
+    )
     args = parser.parse_args()
 
     session = SessionLocal()
@@ -37,6 +43,8 @@ def main() -> int:
             business_id=user.business_id,
             actor_user_id=user.id,
         )
+        if not args.keep_onboarding_open:
+            complete_onboarding(session, business_id=user.business_id, actor_user_id=user.id)
     except DemoSeedError as exc:
         print(exc.message, file=sys.stderr)
         return 1

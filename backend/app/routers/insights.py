@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+﻿from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import require_onboarded
 from app.db import get_db
 from app.models import User
 from app.schemas.reports import (
@@ -22,7 +22,7 @@ def _require_business(user: User) -> str:
 
 @router.get("/movements-over-time", response_model=MovementsOverTimeResponse)
 def movements_over_time_route(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_onboarded),
     db: Session = Depends(get_db),
     days: int = Query(default=30, ge=1, le=366),
 ) -> MovementsOverTimeResponse:
@@ -33,7 +33,7 @@ def movements_over_time_route(
 
 @router.get("/top-sellers", response_model=TopSellersResponse)
 def top_sellers_route(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_onboarded),
     db: Session = Depends(get_db),
     days: int = Query(default=30, ge=1, le=366),
     limit: int = Query(default=5, ge=1, le=25),

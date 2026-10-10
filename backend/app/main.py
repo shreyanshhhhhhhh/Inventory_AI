@@ -1,11 +1,18 @@
 from fastapi import APIRouter, FastAPI
-from fastapi.exceptions import HTTPException
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.exceptions import HTTPException
 
 from app.core.config import settings
-from app.core.errors import AppError, app_error_handler, http_error_handler
+from app.core.errors import (
+    AppError,
+    app_error_handler,
+    http_error_handler,
+    validation_error_handler,
+)
 from app.routers import (
     accounts,
+    audit,
     auth,
     businesses,
     catalog,
@@ -31,6 +38,7 @@ app.add_middleware(
 
 app.add_exception_handler(AppError, app_error_handler)
 app.add_exception_handler(HTTPException, http_error_handler)
+app.add_exception_handler(RequestValidationError, validation_error_handler)
 
 app.include_router(health.router)
 
@@ -46,4 +54,5 @@ api_v1.include_router(accounts.router)
 api_v1.include_router(settings_router.router)
 api_v1.include_router(sales.router)
 api_v1.include_router(onboarding.router)
+api_v1.include_router(audit.router)
 app.include_router(api_v1)

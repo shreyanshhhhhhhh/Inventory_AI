@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException
+﻿from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_current_user
+from app.core.deps import require_onboarded
 from app.db import get_db
 from app.models import User
 from app.schemas.reports import (
@@ -22,7 +22,7 @@ def _require_business(user: User) -> str:
 
 @router.get("/summary", response_model=AccountsSummaryResponse)
 def accounts_summary_route(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_onboarded),
     db: Session = Depends(get_db),
 ) -> AccountsSummaryResponse:
     business_id = _require_business(user)
@@ -32,7 +32,7 @@ def accounts_summary_route(
 
 @router.get("/by-supplier", response_model=AccountsBySupplierResponse)
 def accounts_by_supplier_route(
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_onboarded),
     db: Session = Depends(get_db),
 ) -> AccountsBySupplierResponse:
     business_id = _require_business(user)

@@ -4,6 +4,26 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.repositories.businesses import get_business
+from app.schemas.auth import TokenResponse
+from app.services.auth import signup
+
+
+def signup_service_tenant(
+    db: Session,
+    *,
+    email: str,
+    business_name: str,
+    password: str = "correct-horse-1",
+    full_name: str = "Ada Owner",
+) -> TokenResponse:
+    """Create a business and its owner through the auth service, for service-layer tests."""
+    return signup(
+        db,
+        full_name=full_name,
+        email=email,
+        password=password,
+        business_name=business_name,
+    )
 
 
 @dataclass(frozen=True)

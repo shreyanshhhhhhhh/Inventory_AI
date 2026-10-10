@@ -2,12 +2,12 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models import Category, Product, PurchaseOrder, StockMovement, Supplier
-from app.services.auth import signup
 from app.services.demo_seed import DemoSeedError, load_demo_data
+from tests.helpers.tenant import signup_service_tenant
 
 
 def _owner(db):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Seed Owner",
         email="seed-owner@example.com",

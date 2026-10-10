@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, require_owner
@@ -14,6 +14,7 @@ from app.schemas.settings import (
     LocationUpdateRequest,
     LocationWriteRequest,
     TeamUserResponse,
+    UpdateUserActiveRequest,
     UpdateUserRoleRequest,
 )
 from app.services import settings as settings_service
@@ -65,10 +66,32 @@ def update_business_route(
 def list_locations_route(
     user: User = Depends(require_owner),
     db: Session = Depends(get_db),
+    include_archived: bool = Query(default=False),
 ) -> list[LocationSettingsResponse]:
     business_id = _require_business(user)
-    rows = settings_service.list_locations(db, business_id=business_id)
+    rows = settings_service.list_locations(
+        db, business_id=business_id, include_archived=include_archived
+    )
     return [LocationSettingsResponse.model_validate(row) for row in rows]
+
+
+@router.post("/locations/{location_id}/restore", response_model=LocationSettingsResponse)
+def restore_location_route(
+    location_id: str,
+    user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> LocationSettingsResponse:
+    business_id = _require_business(user)
+    try:
+        row = settings_service.restore_location(
+            db,
+            business_id=business_id,
+            actor_user_id=user.id,
+            location_id=location_id,
+        )
+    except SettingsError as exc:
+        raise _handle_settings_error(exc) from exc
+    return LocationSettingsResponse.model_validate(row)
 
 
 @router.post("/locations", response_model=LocationSettingsResponse, status_code=201)
@@ -179,6 +202,27 @@ def update_user_role_route(
             actor_user_id=user.id,
             user_id=user_id,
             role=body.role,
+        )
+    except SettingsError as exc:
+        raise _handle_settings_error(exc) from exc
+    return TeamUserResponse.model_validate(row)
+
+
+@router.patch("/users/{user_id}/active", response_model=TeamUserResponse)
+def update_user_active_route(
+    user_id: str,
+    body: UpdateUserActiveRequest,
+    user: User = Depends(require_owner),
+    db: Session = Depends(get_db),
+) -> TeamUserResponse:
+    business_id = _require_business(user)
+    try:
+        row = team_service.set_user_active(
+            db,
+            business_id=business_id,
+            actor_user_id=user.id,
+            user_id=user_id,
+            is_active=body.is_active,
         )
     except SettingsError as exc:
         raise _handle_settings_error(exc) from exc

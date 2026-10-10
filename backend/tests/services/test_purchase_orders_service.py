@@ -8,7 +8,6 @@ from app.core.security import hash_password
 from app.models import AuditLog, StockMovement, User
 from app.models.types import new_id
 from app.repositories import inventory as inventory_repo
-from app.services.auth import signup
 from app.services.catalog import create_product, create_supplier
 from app.services.inventory import post_movement
 from app.services.purchase_orders import (
@@ -18,10 +17,11 @@ from app.services.purchase_orders import (
     list_pos,
     transition_po,
 )
+from tests.helpers.tenant import signup_service_tenant
 
 
 def _owner(db):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Ada Owner",
         email="po-owner@example.com",
@@ -31,7 +31,7 @@ def _owner(db):
 
 
 def _other_owner(db):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Bea Owner",
         email="po-other@example.com",

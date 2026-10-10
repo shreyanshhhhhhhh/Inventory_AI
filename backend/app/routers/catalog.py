@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
 from app.db import get_db
-from app.models import User
+from app.models import Supplier, User
 from app.repositories import catalog as catalog_repo
 from app.schemas.imports import ImportResultResponse
 from app.schemas.catalog import (
@@ -153,20 +153,43 @@ def delete_category_route(
 def list_suppliers_route(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    include_archived: bool = Query(default=False),
 ) -> list[SupplierResponse]:
     business_id = _require_business(user)
-    suppliers = catalog_service.list_suppliers(db, business_id=business_id)
-    return [
-        SupplierResponse(
-            id=supplier.id,
-            name=supplier.name,
-            email=supplier.email,
-            phone=supplier.phone,
-            lead_time_days=supplier.lead_time_days,
-            is_active=supplier.archived_at is None,
+    suppliers = catalog_service.list_suppliers(
+        db, business_id=business_id, include_archived=include_archived
+    )
+    return [_supplier_response(supplier) for supplier in suppliers]
+
+
+def _supplier_response(supplier: Supplier) -> SupplierResponse:
+    return SupplierResponse(
+        id=supplier.id,
+        name=supplier.name,
+        email=supplier.email,
+        phone=supplier.phone,
+        lead_time_days=supplier.lead_time_days,
+        is_active=supplier.archived_at is None,
+    )
+
+
+@router.post("/suppliers/{supplier_id}/restore", response_model=SupplierResponse)
+def restore_supplier_route(
+    supplier_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SupplierResponse:
+    business_id = _require_business(user)
+    try:
+        supplier = catalog_service.restore_supplier(
+            db,
+            business_id=business_id,
+            actor_user_id=user.id,
+            supplier_id=supplier_id,
         )
-        for supplier in suppliers
-    ]
+    except CatalogError as exc:
+        raise _handle_catalog_error(exc) from exc
+    return _supplier_response(supplier)
 
 
 @router.post("/suppliers", response_model=SupplierResponse, status_code=201)
@@ -263,6 +286,7 @@ def list_products_route(
     category_id: str | None = Query(default=None),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
+    archived: bool = Query(default=False),
 ) -> ProductListResponse:
     business_id = _require_business(user)
     try:
@@ -273,6 +297,7 @@ def list_products_route(
             category_id=category_id,
             page=page,
             page_size=page_size,
+            archived=archived,
         )
     except CatalogError as exc:
         raise _handle_catalog_error(exc) from exc
@@ -349,6 +374,25 @@ def archive_product_route(
     business_id = _require_business(user)
     try:
         product = catalog_service.archive_product(
+            db,
+            business_id=business_id,
+            actor_user_id=user.id,
+            product_id=product_id,
+        )
+    except CatalogError as exc:
+        raise _handle_catalog_error(exc) from exc
+    return _product_response_from_model(db, business_id=business_id, product_id=product.id)
+
+
+@router.post("/products/{product_id}/restore", response_model=ProductResponse)
+def restore_product_route(
+    product_id: str,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProductResponse:
+    business_id = _require_business(user)
+    try:
+        product = catalog_service.restore_product(
             db,
             business_id=business_id,
             actor_user_id=user.id,

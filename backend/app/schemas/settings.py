@@ -66,6 +66,7 @@ class LocationSettingsResponse(BaseModel):
     name: str
     address: str | None
     is_default: bool
+    is_active: bool = True
 
 
 class TeamUserResponse(BaseModel):
@@ -97,6 +98,10 @@ class CreateStaffRequest(BaseModel):
 
 class UpdateUserRoleRequest(BaseModel):
     role: Literal["owner", "staff"]
+
+
+class UpdateUserActiveRequest(BaseModel):
+    is_active: bool
 
 
 class AutonomyRulesResponse(BaseModel):

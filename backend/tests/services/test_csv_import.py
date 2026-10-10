@@ -4,10 +4,10 @@ import pytest
 from sqlalchemy import func, select
 
 from app.models import Product, StockMovement
-from app.services.auth import signup
 from app.services.catalog import create_product, create_supplier
 from app.services.csv_import import import_products_csv, import_sales_csv
 from app.services.inventory import record_movement
+from tests.helpers.tenant import signup_service_tenant
 
 
 PRODUCT_CSV = """sku,name,category,location,quantity,unit,reorder_point,supplier,unit_cost,lead_time_days
@@ -22,7 +22,7 @@ IMP-003,Valid Item,Produce,Main location,2,each,1,Green Valley,1.00,1
 
 
 def _owner(db):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Import Owner",
         email="import-owner@example.com",

@@ -39,3 +39,17 @@ def require_owner(user: User = Depends(get_current_user)) -> User:
     if user.role != "owner":
         raise HTTPException(status_code=403, detail="Owner access is required.")
     return user
+
+
+def require_onboarded(
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    from app.services.onboarding import is_onboarding_complete
+
+    if user.business_id is None or not is_onboarding_complete(db, business_id=user.business_id):
+        raise HTTPException(
+            status_code=409,
+            detail={"detail": "Finish onboarding before using this page.", "code": "onboarding_required"},
+        )
+    return user

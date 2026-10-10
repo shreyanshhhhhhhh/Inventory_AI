@@ -64,7 +64,7 @@ Quantity is signed. Inbound is positive. Outbound is negative. `SUM` is the bala
 
 Received quantity on a purchase-order line is `SUM(quantity)` of `purchase_receipt` rows with that `purchase_order_item_id`. It is not stored on the line.
 
-Inventory value is that on-hand sum times the preferred `product_suppliers.unit_cost`. It is computed, not stored.
+Inventory value is that on-hand sum times the preferred `product_suppliers.unit_cost`. It is computed, not stored. Products with stock but no preferred supplier cost are excluded from the value and counted as `unvalued_product_count`, so the UI can say the total is partial instead of treating the cost as zero. `products.cost` is not used for valuation.
 
 `actor_type` on `audit_log` is the forward-looking hook. Phase 1 only writes `user`. A later phase may write `agent` and may add explanation storage. Do not add those tables now.
 
@@ -83,7 +83,9 @@ Inventory value is that on-hand sum times the preferred `product_suppliers.unit_
 | created_at | datetime | |
 | updated_at | datetime | |
 
-`CHECK (role IN ('owner', 'staff'))` when role is not null. One owner per business, enforced in the service.
+`CHECK (role IN ('owner', 'staff'))` when role is not null. One owner per business, enforced in the service: promoting a staff member to `owner` transfers ownership and demotes the acting owner to `staff` in the same transaction. The owner cannot be demoted directly or deactivated.
+
+Deactivating a user sets `is_active = false` and revokes their refresh tokens. Reactivating sets it back. Rows are never deleted.
 
 ## refresh_tokens
 
@@ -96,6 +98,8 @@ Inventory value is that on-hand sum times the preferred `product_suppliers.unit_
 | revoked_at | datetime NULL | Set on logout and on rotation |
 | created_at | datetime | |
 
+Rotation revokes the presented token with a conditional `UPDATE ... WHERE revoked_at IS NULL`, so two concurrent refreshes of one token cannot both succeed. Presenting an already-revoked token is treated as theft and revokes every active token for that user. Changing the password also revokes every active token and issues a new session.
+
 ## businesses
 
 | Column | Type | Notes |
@@ -103,7 +107,7 @@ Inventory value is that on-hand sum times the preferred `product_suppliers.unit_
 | id | CHAR(36) | PK |
 | name | VARCHAR(200) | |
 | currency_code | CHAR(3) | ISO 4217, uppercase. Signup stores `USD`. Immutable after onboarding |
-| onboarding_completed_at | datetime NULL | |
+| onboarding_completed_at | datetime NULL | Set by `POST /onboarding/complete` once the business has a location, a product, and a supplier. Dashboard, insights, and accounts reads return `409 onboarding_required` until then |
 | created_at | datetime | |
 | updated_at | datetime | |
 
@@ -132,7 +136,7 @@ One business per user in Phase 1. No currency table.
 | created_at | datetime | |
 | updated_at | datetime | |
 
-The last active location cannot be archived.
+The last active location and the default location cannot be archived. Archived locations can be restored. Stock listings and the dashboard hide archived locations and archived products; their ledger rows stay.
 
 ## categories
 
@@ -165,7 +169,7 @@ Flat list. `products.category_id` is `ON DELETE SET NULL`.
 | created_at | datetime | |
 | updated_at | datetime | |
 
-Archived products are hidden from the default catalog and cannot be added to new movements or new purchase orders.
+Archived products are hidden from the default catalog and cannot be added to new movements or new purchase orders. They can be listed with `archived=true` and restored.
 
 ## suppliers
 
@@ -181,7 +185,7 @@ Archived products are hidden from the default catalog and cannot be added to new
 | created_at | datetime | |
 | updated_at | datetime | |
 
-Archived suppliers cannot be used on new purchase orders. Existing orders stay.
+Archived suppliers cannot be used on new purchase orders. Existing orders stay. Archived suppliers can be restored.
 
 ## product_suppliers
 
@@ -236,9 +240,10 @@ Checks:
 Service rules the database cannot express portably:
 
 - A transfer inserts two rows in one transaction: opposite signs, equal absolute quantity, same product, same group id, different locations.
-- Every `sale` row gets a `sale_group_id`. Lines posted together share one id.
+- Every `sale` row gets a `sale_group_id`. Lines posted together (`POST /inventory/sales`) share one id and commit or fail together.
 - A group of transfer rows sums to zero.
-- Reject a posting that would make on-hand negative at that location.
+- Reject any posting, including a negative adjustment, that would make on-hand negative at that location.
+- Before reading the balance, the service locks the product (`SELECT ... FOR UPDATE` on PostgreSQL, a no-op write that takes the database write lock on SQLite), so concurrent postings for one product cannot both pass the negative-stock check.
 - Reject a receipt that would make received quantity exceed `quantity_ordered`.
 - Reject movements dated in the future.
 - The repository exposes insert and select only.
@@ -251,7 +256,7 @@ Index `(business_id, product_id, location_id)` for the on-hand sum. Index `trans
 | --- | --- | --- |
 | id | CHAR(36) | PK |
 | business_id | CHAR(36) | FK |
-| po_number | VARCHAR(32) | Unique per business. Service-assigned, for example `PO-0001` |
+| po_number | VARCHAR(32) | Unique per business. Service-assigned, for example `PO-0001`. A collision on concurrent create is retried in a fresh transaction |
 | supplier_id | CHAR(36) | FK suppliers |
 | location_id | CHAR(36) | FK locations. Where stock will be received |
 | status | VARCHAR(32) | `draft`, `approved`, `sent`, `received`, `cancelled` |
@@ -297,7 +302,7 @@ Insert-only. Who, what, when, before, after.
 | after_data | JSON NULL | After |
 | created_at | datetime | When |
 
-Written in the same transaction as the change. Phase 1 does not add `agent_run_id` or an explanation column.
+Written in the same transaction as the change. Phase 1 does not add `agent_run_id` or an explanation column. CSV import and demo data write one `*.create` row per category, supplier, and product they create. Owners read the log through `GET /audit-log`, filterable by `entity_type`, `entity_id`, and `action`.
 
 ## Tenant and delete rules
 

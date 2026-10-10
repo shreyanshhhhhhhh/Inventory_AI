@@ -240,8 +240,69 @@ def delete_category(
     session.commit()
 
 
-def list_suppliers(session: Session, *, business_id: str) -> list[Supplier]:
-    return catalog_repo.list_suppliers(session, business_id, active_only=True)
+def list_suppliers(
+    session: Session,
+    *,
+    business_id: str,
+    include_archived: bool = False,
+) -> list[Supplier]:
+    return catalog_repo.list_suppliers(session, business_id, active_only=not include_archived)
+
+
+def restore_supplier(
+    session: Session,
+    *,
+    business_id: str,
+    actor_user_id: str,
+    supplier_id: str,
+) -> Supplier:
+    supplier = _get_supplier_or_error(
+        session, business_id=business_id, supplier_id=supplier_id, active_only=False
+    )
+    if supplier.archived_at is None:
+        return supplier
+    before = _supplier_payload(supplier)
+    supplier.archived_at = None
+    write_audit(
+        session,
+        business_id=business_id,
+        actor_user_id=actor_user_id,
+        action="supplier.restore",
+        entity_type="supplier",
+        entity_id=supplier.id,
+        before_data=before,
+        after_data=_supplier_payload(supplier),
+    )
+    session.commit()
+    session.refresh(supplier)
+    return supplier
+
+
+def restore_product(
+    session: Session,
+    *,
+    business_id: str,
+    actor_user_id: str,
+    product_id: str,
+) -> Product:
+    product = _get_product_or_error(session, business_id=business_id, product_id=product_id)
+    if product.archived_at is None:
+        return product
+    before = _product_payload(product)
+    product.archived_at = None
+    write_audit(
+        session,
+        business_id=business_id,
+        actor_user_id=actor_user_id,
+        action="product.restore",
+        entity_type="product",
+        entity_id=product.id,
+        before_data=before,
+        after_data=_product_payload(product),
+    )
+    session.commit()
+    session.refresh(product)
+    return product
 
 
 def create_supplier(
@@ -347,6 +408,7 @@ def list_products(
     category_id: str | None,
     page: int,
     page_size: int,
+    archived: bool = False,
 ) -> tuple[list[catalog_repo.ProductListRow], int]:
     if page < 1:
         raise CatalogError("Page must be at least 1.")
@@ -359,6 +421,7 @@ def list_products(
         category_id=category_id,
         page=page,
         page_size=page_size,
+        archived=archived,
     )
 
 

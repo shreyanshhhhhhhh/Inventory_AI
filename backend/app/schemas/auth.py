@@ -41,6 +41,31 @@ class LogoutRequest(BaseModel):
     refresh_token: str = Field(min_length=1)
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1, max_length=200)
+    new_password: str = Field(min_length=8, max_length=200)
+
+
+class ProfileUpdateRequest(BaseModel):
+    full_name: str | None = Field(default=None, min_length=1, max_length=200)
+    email: EmailStr | None = None
+
+    @field_validator("full_name")
+    @classmethod
+    def strip_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("Name is required.")
+        return stripped
+
+    @field_validator("email")
+    @classmethod
+    def lowercase_email(cls, value: str | None) -> str | None:
+        return value.lower() if value is not None else None
+
+
 class UserResponse(BaseModel):
     id: str
     email: str
@@ -60,6 +85,7 @@ class BusinessResponse(BaseModel):
     id: str
     name: str
     currency_code: str
+    onboarding_completed: bool = False
 
 
 class OwnerOnlyResponse(BaseModel):

@@ -2,15 +2,15 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from app.repositories import inventory as inventory_repo
-from app.services.auth import signup
 from app.services.catalog import create_product, create_supplier
 from app.services.dashboard import get_activity, get_needs_attention, get_summary
 from app.services.inventory import get_stock_levels, post_movement, record_movement
 from app.services.purchase_orders import create_po, transition_po
+from tests.helpers.tenant import signup_service_tenant
 
 
 def _owner(db, *, email: str, business_name: str):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Ada Owner",
         email=email,

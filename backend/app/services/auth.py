@@ -1,6 +1,7 @@
 import secrets
 from datetime import timedelta
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -123,15 +124,110 @@ def login(session: Session, *, email: str, password: str) -> TokenResponse:
 
 
 def refresh(session: Session, *, raw_token: str) -> TokenResponse:
-    row = _active_refresh_token(session, raw_token)
+    row = get_refresh_token_by_hash(session, hash_refresh_token(raw_token))
+    if row is None or row.expires_at <= utcnow():
+        raise AuthError("Refresh token is invalid.")
+    if row.revoked_at is not None or not _claim_refresh_token(session, row.id):
+        # A revoked token being presented again means it may have been stolen.
+        _revoke_all_refresh_tokens(session, row.user_id)
+        session.commit()
+        raise AuthError("Refresh token is invalid.")
     user = get_user_by_id(session, row.user_id)
     if user is None or not user.is_active:
+        session.rollback()
         raise AuthError("Refresh token is invalid.")
     _require_membership(user)
-    row.revoked_at = utcnow()
     raw_refresh = _issue_refresh_token(session, user)
     session.commit()
     return _token_response(user, raw_refresh)
+
+
+def change_password(
+    session: Session,
+    *,
+    user_id: str,
+    current_password: str,
+    new_password: str,
+) -> TokenResponse:
+    user = get_user_by_id(session, user_id)
+    if user is None or not user.is_active:
+        raise AuthError("Sign in is required.")
+    if not verify_password(current_password, user.password_hash):
+        raise AuthError("Current password is incorrect.", 400, code="invalid_password")
+    if current_password == new_password:
+        raise AuthError("Choose a password different from the current one.", 400, code="bad_request")
+    _require_membership(user)
+    assert user.business_id is not None
+    user.password_hash = hash_password(new_password)
+    _revoke_all_refresh_tokens(session, user.id)
+    log_action(
+        session,
+        business_id=user.business_id,
+        actor_user_id=user.id,
+        action="user.password.change",
+        entity_type="user",
+        entity_id=user.id,
+        before_data=None,
+        after_data={"id": user.id},
+    )
+    raw_refresh = _issue_refresh_token(session, user)
+    session.commit()
+    return _token_response(user, raw_refresh)
+
+
+def update_profile(
+    session: Session,
+    *,
+    user_id: str,
+    full_name: str | None,
+    email: str | None,
+) -> UserResponse:
+    user = get_user_by_id(session, user_id)
+    if user is None or not user.is_active:
+        raise AuthError("Sign in is required.")
+    _require_membership(user)
+    assert user.business_id is not None
+    before = {"full_name": user.full_name, "email": user.email}
+    if email is not None and email != user.email:
+        if get_user_by_email(session, email) is not None:
+            raise AuthError("An account with this email already exists.", 409)
+        user.email = email
+    if full_name is not None:
+        user.full_name = full_name
+    log_action(
+        session,
+        business_id=user.business_id,
+        actor_user_id=user.id,
+        action="user.profile.update",
+        entity_type="user",
+        entity_id=user.id,
+        before_data=before,
+        after_data={"full_name": user.full_name, "email": user.email},
+    )
+    try:
+        session.commit()
+    except IntegrityError as exc:
+        session.rollback()
+        raise AuthError("An account with this email already exists.", 409) from exc
+    return _user_response(user)
+
+
+def _claim_refresh_token(session: Session, token_id: str) -> bool:
+    """Revoke the token only if still active, so two concurrent refreshes cannot both succeed."""
+    result = session.execute(
+        update(RefreshToken)
+        .where(RefreshToken.id == token_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=utcnow())
+    )
+    return result.rowcount == 1
+
+
+def _revoke_all_refresh_tokens(session: Session, user_id: str) -> None:
+    session.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=utcnow())
+    )
 
 
 def logout(session: Session, *, raw_token: str) -> None:
@@ -149,6 +245,7 @@ def current_business(session: Session, *, business_id: str) -> BusinessResponse:
         id=business.id,
         name=business.name,
         currency_code=business.currency_code,
+        onboarding_completed=business.onboarding_completed_at is not None,
     )
 
 
@@ -169,29 +266,27 @@ def _issue_refresh_token(session: Session, user: User) -> str:
     return raw_token
 
 
-def _active_refresh_token(session: Session, raw_token: str) -> RefreshToken:
-    row = get_refresh_token_by_hash(session, hash_refresh_token(raw_token))
-    if row is None or row.revoked_at is not None or row.expires_at <= utcnow():
-        raise AuthError("Refresh token is invalid.")
-    return row
-
-
-def _token_response(user: User, raw_refresh: str) -> TokenResponse:
+def _user_response(user: User) -> UserResponse:
     _require_membership(user)
     assert user.business_id is not None
     assert user.role is not None
+    return UserResponse(
+        id=user.id,
+        email=user.email,
+        full_name=user.full_name,
+        role=user.role,
+        business_id=user.business_id,
+    )
+
+
+def _token_response(user: User, raw_refresh: str) -> TokenResponse:
+    profile = _user_response(user)
     return TokenResponse(
         access_token=create_access_token(
-            user_id=user.id,
-            business_id=user.business_id,
-            role=user.role,
+            user_id=profile.id,
+            business_id=profile.business_id,
+            role=profile.role,
         ),
         refresh_token=raw_refresh,
-        user=UserResponse(
-            id=user.id,
-            email=user.email,
-            full_name=user.full_name,
-            role=user.role,
-            business_id=user.business_id,
-        ),
+        user=profile,
     )

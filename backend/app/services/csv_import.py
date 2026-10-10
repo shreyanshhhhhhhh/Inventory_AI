@@ -94,10 +94,32 @@ def _parse_csv(text: str) -> tuple[list[str], list[dict[str, str]]]:
     return headers, rows
 
 
+def _audit_import_create(
+    session: Session,
+    *,
+    business_id: str,
+    actor_user_id: str,
+    entity_type: str,
+    entity_id: str,
+    data: dict[str, object],
+) -> None:
+    log_action(
+        session,
+        business_id=business_id,
+        actor_user_id=actor_user_id,
+        action=f"{entity_type}.create",
+        entity_type=entity_type,
+        entity_id=entity_id,
+        before_data=None,
+        after_data={"id": entity_id, **data, "source": "csv_import"},
+    )
+
+
 def _get_or_create_category(
     session: Session,
     *,
     business_id: str,
+    actor_user_id: str,
     cache: dict[str, Category],
     name: str,
 ) -> Category:
@@ -116,6 +138,14 @@ def _get_or_create_category(
     category = Category(id=new_id(), business_id=business_id, name=name.strip())
     session.add(category)
     session.flush()
+    _audit_import_create(
+        session,
+        business_id=business_id,
+        actor_user_id=actor_user_id,
+        entity_type="category",
+        entity_id=category.id,
+        data={"name": category.name},
+    )
     cache[key] = category
     return category
 
@@ -124,6 +154,7 @@ def _get_or_create_supplier(
     session: Session,
     *,
     business_id: str,
+    actor_user_id: str,
     cache: dict[str, Supplier],
     name: str,
     lead_time_days: int,
@@ -149,6 +180,14 @@ def _get_or_create_supplier(
     )
     session.add(supplier)
     session.flush()
+    _audit_import_create(
+        session,
+        business_id=business_id,
+        actor_user_id=actor_user_id,
+        entity_type="supplier",
+        entity_id=supplier.id,
+        data={"name": supplier.name, "lead_time_days": lead_time_days},
+    )
     cache[key] = supplier
     return supplier
 
@@ -308,6 +347,7 @@ def import_products_csv(
                 category = _get_or_create_category(
                     session,
                     business_id=business_id,
+                    actor_user_id=actor_user_id,
                     cache=category_cache,
                     name=category_name,
                 )
@@ -346,6 +386,7 @@ def import_products_csv(
                 supplier = _get_or_create_supplier(
                     session,
                     business_id=business_id,
+                    actor_user_id=actor_user_id,
                     cache=supplier_cache,
                     name=supplier_name,
                     lead_time_days=lead_time,
@@ -378,15 +419,18 @@ def import_products_csv(
                         commit=False,
                     )
 
-            log_action(
+            _audit_import_create(
                 session,
                 business_id=business_id,
                 actor_user_id=actor_user_id,
-                action="product.import",
                 entity_type="product",
                 entity_id=product.id,
-                before_data=None,
-                after_data={"sku": sku, "name": name},
+                data={
+                    "sku": sku,
+                    "name": name,
+                    "cost": str(cost) if cost is not None else None,
+                    "reorder_point": str(reorder_point) if reorder_point is not None else None,
+                },
             )
             validation.imported_count += 1
 

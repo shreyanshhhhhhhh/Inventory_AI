@@ -143,10 +143,11 @@ def list_products(
     category_id: str | None,
     page: int,
     page_size: int,
+    archived: bool = False,
 ) -> tuple[list[ProductListRow], int]:
     filters = [
         Product.business_id == business_id,
-        Product.archived_at.is_(None),
+        Product.archived_at.is_not(None) if archived else Product.archived_at.is_(None),
     ]
     if category_id is not None:
         filters.append(Product.category_id == category_id)

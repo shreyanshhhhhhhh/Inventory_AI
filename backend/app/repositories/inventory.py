@@ -48,14 +48,34 @@ def list_locations(session: Session, business_id: str) -> list[Location]:
     )
 
 
-def get_location(session: Session, business_id: str, location_id: str) -> Location | None:
-    return session.scalar(
-        select(Location).where(
-            Location.business_id == business_id,
-            Location.id == location_id,
-            Location.archived_at.is_(None),
+def list_all_locations(session: Session, business_id: str) -> list[Location]:
+    return list(
+        session.scalars(
+            select(Location)
+            .where(Location.business_id == business_id)
+            .order_by(
+                Location.archived_at.is_not(None),
+                Location.is_default.desc(),
+                Location.name.asc(),
+            )
         )
     )
+
+
+def get_location(
+    session: Session,
+    business_id: str,
+    location_id: str,
+    *,
+    include_archived: bool = False,
+) -> Location | None:
+    stmt = select(Location).where(
+        Location.business_id == business_id,
+        Location.id == location_id,
+    )
+    if not include_archived:
+        stmt = stmt.where(Location.archived_at.is_(None))
+    return session.scalar(stmt)
 
 
 def get_product(session: Session, business_id: str, product_id: str) -> Product | None:

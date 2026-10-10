@@ -5,7 +5,6 @@ from sqlalchemy import func, select
 
 from app.models import AuditLog, Location, StockMovement
 from app.models.types import new_id
-from app.services.auth import signup
 from app.services.catalog import create_product
 from app.services.inventory import (
     InventoryError,
@@ -15,10 +14,11 @@ from app.services.inventory import (
     record_movement,
     record_sale,
 )
+from tests.helpers.tenant import signup_service_tenant
 
 
 def _owner(db):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Ada Owner",
         email="inventory-owner@example.com",
@@ -28,7 +28,7 @@ def _owner(db):
 
 
 def _other_owner(db):
-    return signup(
+    return signup_service_tenant(
         db,
         full_name="Bea Owner",
         email="inventory-other@example.com",
