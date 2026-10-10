@@ -87,11 +87,7 @@ def _ensure_stock_available(
     product_id: str,
     location_id: str,
     signed_quantity: Decimal,
-    movement_type: str,
-    has_note: bool,
 ) -> None:
-    if movement_type == "adjustment" and has_note:
-        return
     if signed_quantity >= 0:
         return
     on_hand = inventory_repo.get_on_hand(
@@ -209,6 +205,7 @@ def post_movement(
     purchase_order_item_id: str | None = None,
     destination_location_id: str | None = None,
     occurred_at: datetime | None = None,
+    sale_group_id: str | None = None,
     commit: bool = True,
 ) -> StockMovement:
     product = inventory_repo.get_product(session, business_id, product_id)
@@ -255,6 +252,8 @@ def post_movement(
     if movement_type == "adjustment" and not note:
         raise InventoryError("Adjustments require a note.", code="bad_request")
 
+    inventory_repo.lock_product_for_posting(session, business_id=business_id, product_id=product_id)
+
     if movement_type == "purchase_receipt" and purchase_order_item_id is not None:
         po_item = session.get(PurchaseOrderItem, purchase_order_item_id)
         if po_item is None or po_item.business_id != business_id:
@@ -277,8 +276,6 @@ def post_movement(
         product_id=product_id,
         location_id=location_id,
         signed_quantity=signed_quantity,
-        movement_type=movement_type,
-        has_note=bool(note and note.strip()),
     )
 
     movement = StockMovement(
@@ -290,7 +287,7 @@ def post_movement(
         quantity=signed_quantity,
         reason=note if movement_type == "adjustment" else None,
         note=note if movement_type not in {"adjustment", "purchase_receipt"} else note,
-        sale_group_id=new_id() if movement_type == "sale" else None,
+        sale_group_id=(sale_group_id or new_id()) if movement_type == "sale" else None,
         purchase_order_item_id=purchase_order_item_id,
         occurred_at=when,
         created_by_user_id=actor_user_id,
@@ -360,6 +357,62 @@ def record_movement(
     )
 
 
+def record_sale(
+    session: Session,
+    *,
+    business_id: str,
+    actor_user_id: str,
+    location_id: str,
+    lines: list[tuple[str, Decimal]],
+    note: str | None = None,
+    occurred_at: datetime | None = None,
+) -> dict[str, object]:
+    """Post one sale movement per line, all sharing a sale_group_id, in one transaction."""
+    if not lines:
+        raise InventoryError("A sale needs at least one line.", code="bad_request")
+    product_ids = [product_id for product_id, _ in lines]
+    if len(set(product_ids)) != len(product_ids):
+        raise InventoryError("Each product can appear only once in a sale.", code="bad_request")
+
+    group_id = new_id()
+    movement_ids: list[str] = []
+    try:
+        for product_id, quantity in lines:
+            if quantity <= 0:
+                raise InventoryError("Sale quantities must be greater than 0.", code="bad_request")
+            movement = post_movement(
+                session,
+                business_id=business_id,
+                actor_user_id=actor_user_id,
+                product_id=product_id,
+                location_id=location_id,
+                movement_type="sale",
+                quantity=quantity,
+                note=note,
+                occurred_at=occurred_at,
+                sale_group_id=group_id,
+                commit=False,
+            )
+            movement_ids.append(movement.id)
+    except InventoryError:
+        session.rollback()
+        raise
+    session.commit()
+
+    rows, _ = inventory_repo.list_movements(
+        session,
+        business_id=business_id,
+        movement_type="sale",
+        product_id=None,
+        date_from=None,
+        date_to=None,
+        page=1,
+        page_size=100,
+        sale_group_id=group_id,
+    )
+    return {"sale_group_id": group_id, "items": [_movement_dict(row) for row in rows]}
+
+
 def _post_transfer(
     session: Session,
     *,
@@ -376,14 +429,13 @@ def _post_transfer(
     transfer_quantity = abs(quantity)
     out_quantity = -transfer_quantity
 
+    inventory_repo.lock_product_for_posting(session, business_id=business_id, product_id=product_id)
     _ensure_stock_available(
         session,
         business_id=business_id,
         product_id=product_id,
         location_id=source_location_id,
         signed_quantity=out_quantity,
-        movement_type="transfer",
-        has_note=False,
     )
 
     group_id = new_id()

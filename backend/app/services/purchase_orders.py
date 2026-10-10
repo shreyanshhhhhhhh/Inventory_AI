@@ -1,6 +1,7 @@
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models import PurchaseOrder, PurchaseOrderItem
@@ -10,6 +11,8 @@ from app.repositories import purchase_orders as po_repo
 from app.repositories.purchase_orders import PurchaseOrderRow
 from app.services.audit import log_action
 from app.services.inventory import InventoryError, post_movement
+
+PO_NUMBER_ATTEMPTS = 3
 
 
 class PurchaseOrderError(Exception):
@@ -175,6 +178,40 @@ def create_po(
     notes: str | None,
     line_items: list[dict[str, object]],
 ) -> dict[str, object]:
+    for attempt in range(PO_NUMBER_ATTEMPTS):
+        try:
+            return _create_po_once(
+                session,
+                business_id=business_id,
+                actor_user_id=actor_user_id,
+                supplier_id=supplier_id,
+                expected_date=expected_date,
+                location_id=location_id,
+                notes=notes,
+                line_items=line_items,
+            )
+        except IntegrityError as exc:
+            session.rollback()
+            if "po_number" not in str(exc.orig) or attempt == PO_NUMBER_ATTEMPTS - 1:
+                raise PurchaseOrderError(
+                    "Could not save the purchase order. Try again.",
+                    status_code=409,
+                    code="conflict",
+                ) from exc
+    raise AssertionError("unreachable")
+
+
+def _create_po_once(
+    session: Session,
+    *,
+    business_id: str,
+    actor_user_id: str,
+    supplier_id: str,
+    expected_date: date | None,
+    location_id: str | None,
+    notes: str | None,
+    line_items: list[dict[str, object]],
+) -> dict[str, object]:
     from app.repositories.businesses import get_business
 
     business = get_business(session, business_id)
@@ -197,7 +234,6 @@ def create_po(
     order = PurchaseOrder(
         id=new_id(),
         business_id=business_id,
-        po_number=po_repo.next_po_number(session, business_id),
         supplier_id=supplier_id,
         location_id=resolved_location_id,
         status="draft",
@@ -206,6 +242,7 @@ def create_po(
         expected_on=expected_date,
         created_by_user_id=actor_user_id,
     )
+    order.po_number = po_repo.next_po_number(session, business_id)
     session.add(order)
     session.flush()
 
@@ -354,7 +391,7 @@ def transition_po(
     action: str,
     actor_role: str,
 ) -> dict[str, object]:
-    order = po_repo.get_purchase_order(session, business_id, purchase_order_id)
+    order = po_repo.get_purchase_order(session, business_id, purchase_order_id, lock=True)
     if order is None:
         raise PurchaseOrderError("Purchase order not found.", status_code=404, code="not_found")
 

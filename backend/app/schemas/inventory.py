@@ -73,6 +73,30 @@ class MovementListResponse(BaseModel):
     page_size: int
 
 
+class SaleLineRequest(BaseModel):
+    product_id: str
+    quantity: Decimal = Field(gt=0)
+
+
+class SaleCreateRequest(BaseModel):
+    location_id: str
+    lines: list[SaleLineRequest] = Field(min_length=1)
+    note: str | None = None
+
+    @field_validator("note")
+    @classmethod
+    def strip_note(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
+
+
+class SaleResponse(BaseModel):
+    sale_group_id: str
+    items: list[MovementResponse]
+
+
 class MovementCreateRequest(BaseModel):
     product_id: str
     location_id: str

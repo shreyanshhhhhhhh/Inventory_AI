@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.models import Location, Product, ProductSupplier, StockMovement, User
@@ -65,6 +65,25 @@ def get_product(session: Session, business_id: str, product_id: str) -> Product 
             Product.id == product_id,
             Product.archived_at.is_(None),
         )
+    )
+
+
+def lock_product_for_posting(session: Session, *, business_id: str, product_id: str) -> None:
+    """Serialize ledger postings for one product until the transaction ends.
+
+    PostgreSQL takes a row lock. SQLite has no row locks, so a no-op write takes the
+    database write lock before the on-hand balance is read.
+    """
+    if session.get_bind().dialect.name == "sqlite":
+        session.execute(
+            text("UPDATE products SET id = id WHERE id = :product_id AND business_id = :business_id"),
+            {"product_id": product_id, "business_id": business_id},
+        )
+        return
+    session.execute(
+        select(Product.id)
+        .where(Product.business_id == business_id, Product.id == product_id)
+        .with_for_update()
     )
 
 
@@ -199,7 +218,11 @@ def list_stock_levels(
         )
         .join(Product, Product.id == on_hand.c.product_id)
         .join(Location, Location.id == on_hand.c.location_id)
-        .where(on_hand.c.business_id == business_id)
+        .where(
+            on_hand.c.business_id == business_id,
+            Product.archived_at.is_(None),
+            Location.archived_at.is_(None),
+        )
     )
 
     if location_id:
@@ -259,6 +282,7 @@ def list_movements(
     date_to: datetime | None,
     page: int,
     page_size: int,
+    sale_group_id: str | None = None,
 ) -> tuple[list[MovementHistoryRow], int]:
     stmt = (
         select(
@@ -286,6 +310,9 @@ def list_movements(
 
     if product_id:
         stmt = stmt.where(StockMovement.product_id == product_id)
+
+    if sale_group_id:
+        stmt = stmt.where(StockMovement.sale_group_id == sale_group_id)
 
     if date_from:
         stmt = stmt.where(StockMovement.occurred_at >= date_from)

@@ -13,6 +13,7 @@ from app.services.inventory import (
     get_movement_history,
     get_stock_levels,
     record_movement,
+    record_sale,
 )
 
 
@@ -139,7 +140,7 @@ def test_sale_rejects_negative_stock(db) -> None:
     assert db.scalar(select(func.count()).select_from(StockMovement)) == 1
 
 
-def test_adjustment_with_note_can_go_negative(db) -> None:
+def test_adjustment_cannot_make_stock_negative(db) -> None:
     owner = _owner(db)
     business_id = owner.user.business_id
     location_id = _default_location_id(db, business_id)
@@ -154,6 +155,19 @@ def test_adjustment_with_note_can_go_negative(db) -> None:
         movement_type="receipt",
         quantity=Decimal("2"),
     )
+    with pytest.raises(InventoryError) as exc:
+        record_movement(
+            db,
+            business_id=business_id,
+            actor_user_id=owner.user.id,
+            product_id=product_id,
+            location_id=location_id,
+            movement_type="adjustment",
+            quantity=Decimal("-5"),
+            note="Damaged during unload",
+        )
+    assert exc.value.code == "insufficient_stock"
+
     record_movement(
         db,
         business_id=business_id,
@@ -161,12 +175,11 @@ def test_adjustment_with_note_can_go_negative(db) -> None:
         product_id=product_id,
         location_id=location_id,
         movement_type="adjustment",
-        quantity=Decimal("-5"),
+        quantity=Decimal("-2"),
         note="Damaged during unload",
     )
-
     items, _ = get_stock_levels(db, business_id=business_id, page=1, page_size=10)
-    assert items[0]["on_hand"] == Decimal("-3")
+    assert items[0]["on_hand"] == Decimal("0")
 
 
 def test_adjustment_without_note_fails(db) -> None:
@@ -319,6 +332,101 @@ def test_transfer_inserts_pair_and_balances(db) -> None:
     )
     assert len(transfer_rows) == 2
     assert sum(row.quantity for row in transfer_rows) == 0
+    assert transfer_rows[0].transfer_group_id is not None
+    assert transfer_rows[0].transfer_group_id == transfer_rows[1].transfer_group_id
+    assert {row.location_id for row in transfer_rows} == {source_id, destination.id}
+
+
+def test_transfer_rejects_more_than_source_on_hand(db) -> None:
+    owner = _owner(db)
+    business_id = owner.user.business_id
+    source_id = _default_location_id(db, business_id)
+    destination = Location(id=new_id(), business_id=business_id, name="Annex", is_default=False)
+    db.add(destination)
+    db.commit()
+    product_id = _product(db, business_id=business_id, actor_user_id=owner.user.id)
+
+    with pytest.raises(InventoryError) as exc:
+        record_movement(
+            db,
+            business_id=business_id,
+            actor_user_id=owner.user.id,
+            product_id=product_id,
+            location_id=source_id,
+            movement_type="transfer",
+            quantity=Decimal("1"),
+            destination_location_id=destination.id,
+        )
+    assert exc.value.code == "insufficient_stock"
+    assert db.scalar(select(func.count()).select_from(StockMovement)) == 0
+
+
+def test_multi_line_sale_shares_group_and_is_atomic(db) -> None:
+    owner = _owner(db)
+    business_id = owner.user.business_id
+    location_id = _default_location_id(db, business_id)
+    first = _product(db, business_id=business_id, actor_user_id=owner.user.id, sku="SALE-1")
+    second = _product(db, business_id=business_id, actor_user_id=owner.user.id, sku="SALE-2")
+    for product_id in (first, second):
+        record_movement(
+            db,
+            business_id=business_id,
+            actor_user_id=owner.user.id,
+            product_id=product_id,
+            location_id=location_id,
+            movement_type="receipt",
+            quantity=Decimal("5"),
+        )
+
+    sale = record_sale(
+        db,
+        business_id=business_id,
+        actor_user_id=owner.user.id,
+        location_id=location_id,
+        lines=[(first, Decimal("2")), (second, Decimal("1"))],
+    )
+    assert len(sale["items"]) == 2
+    groups = set(
+        db.scalars(
+            select(StockMovement.sale_group_id).where(StockMovement.movement_type == "sale")
+        )
+    )
+    assert groups == {sale["sale_group_id"]}
+
+    with pytest.raises(InventoryError):
+        record_sale(
+            db,
+            business_id=business_id,
+            actor_user_id=owner.user.id,
+            location_id=location_id,
+            lines=[(first, Decimal("1")), (second, Decimal("50"))],
+        )
+    sale_count = db.scalar(
+        select(func.count()).select_from(StockMovement).where(StockMovement.movement_type == "sale")
+    )
+    assert sale_count == 2
+
+
+def test_decimal_quantity_survives_write_and_read(db) -> None:
+    owner = _owner(db)
+    business_id = owner.user.business_id
+    location_id = _default_location_id(db, business_id)
+    product_id = _product(db, business_id=business_id, actor_user_id=owner.user.id)
+
+    movement = record_movement(
+        db,
+        business_id=business_id,
+        actor_user_id=owner.user.id,
+        product_id=product_id,
+        location_id=location_id,
+        movement_type="receipt",
+        quantity=Decimal("1.2345"),
+    )
+    db.expire_all()
+    stored = db.get(StockMovement, movement["id"])
+    assert stored is not None
+    assert isinstance(stored.quantity, Decimal)
+    assert stored.quantity == Decimal("1.2345")
 
 
 def test_movement_writes_audit_log(db) -> None:

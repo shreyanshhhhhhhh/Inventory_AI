@@ -61,9 +61,11 @@ def get_summary(session: Session, *, business_id: str) -> dict[str, object]:
         select(func.count())
         .select_from(on_hand)
         .join(Product, Product.id == on_hand.c.product_id)
+        .join(Location, Location.id == on_hand.c.location_id)
         .where(
             on_hand.c.business_id == business_id,
             Product.archived_at.is_(None),
+            Location.archived_at.is_(None),
             _low_stock_predicate(on_hand.c.on_hand, Product.reorder_point),
         )
     )
@@ -105,6 +107,7 @@ def get_needs_attention(session: Session, *, business_id: str) -> list[dict[str,
         .where(
             on_hand.c.business_id == business_id,
             Product.archived_at.is_(None),
+            Location.archived_at.is_(None),
             _low_stock_predicate(on_hand.c.on_hand, Product.reorder_point),
         )
         .order_by(

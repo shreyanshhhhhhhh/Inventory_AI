@@ -11,6 +11,8 @@ from app.schemas.inventory import (
     MovementCreateRequest,
     MovementListResponse,
     MovementResponse,
+    SaleCreateRequest,
+    SaleResponse,
     StockListResponse,
     StockLevelResponse,
 )
@@ -124,3 +126,24 @@ def create_movement_route(
     except InventoryError as exc:
         raise _handle_inventory_error(exc) from exc
     return MovementResponse.model_validate(movement)
+
+
+@router.post("/sales", response_model=SaleResponse, status_code=201)
+def create_sale_route(
+    body: SaleCreateRequest,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> SaleResponse:
+    business_id = _require_business(user)
+    try:
+        sale = inventory_service.record_sale(
+            db,
+            business_id=business_id,
+            actor_user_id=user.id,
+            location_id=body.location_id,
+            lines=[(line.product_id, line.quantity) for line in body.lines],
+            note=body.note,
+        )
+    except InventoryError as exc:
+        raise _handle_inventory_error(exc) from exc
+    return SaleResponse.model_validate(sale)

@@ -71,13 +71,16 @@ def get_purchase_order(
     session: Session,
     business_id: str,
     purchase_order_id: str,
+    *,
+    lock: bool = False,
 ) -> PurchaseOrder | None:
-    return session.scalar(
-        select(PurchaseOrder).where(
-            PurchaseOrder.business_id == business_id,
-            PurchaseOrder.id == purchase_order_id,
-        )
+    stmt = select(PurchaseOrder).where(
+        PurchaseOrder.business_id == business_id,
+        PurchaseOrder.id == purchase_order_id,
     )
+    if lock:
+        stmt = stmt.with_for_update()
+    return session.scalar(stmt)
 
 
 def list_purchase_order_items(
