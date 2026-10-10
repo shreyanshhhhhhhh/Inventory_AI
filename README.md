@@ -117,13 +117,16 @@ All application routes are under `/api/v1` except `/health`.
 
 | Area | Examples |
 | --- | --- |
-| Auth | `POST /auth/signup`, `/auth/login`, `/auth/me` |
-| Catalog | `GET/POST /products`, `/suppliers`, `/categories` |
-| Inventory | `GET /inventory/stock`, `POST /inventory/movements` |
+| Auth | `POST /auth/signup`, `/auth/login`, `/auth/refresh`, `GET/PATCH /auth/me`, `POST /auth/change-password` |
+| Onboarding | `GET /onboarding/status`, `POST /onboarding/complete`, `POST /onboarding/load-demo-data` |
+| Catalog | `GET/POST /products`, `/suppliers`, `/categories`; `POST /products/{id}/restore`, `/suppliers/{id}/restore` |
+| Inventory | `GET /inventory/stock`, `POST /inventory/movements`, `POST /inventory/sales` |
 | Orders | `GET/POST /purchase-orders`, `POST .../transition` |
 | Dashboard | `GET /dashboard/summary`, `/needs-attention`, `/activity` |
 | Insights | `GET /insights/movements-over-time`, `/top-sellers` |
 | Accounts | `GET /accounts/summary`, `/by-supplier` |
-| Settings | `PATCH /settings/business`, `/locations`, `/users`, `/autonomy-rules` |
+| Settings | `PATCH /settings/business`, `/locations` (+ `/{id}/restore`), `/users` (+ `/{id}/role`, `/{id}/active`), `/autonomy-rules` |
+| Audit | `GET /audit-log` (owner) |
 | Import | `POST /products/import-csv`, `POST /sales/import-csv` |
-| Demo | `POST /onboarding/load-demo-data` |
+
+Dashboard, insights, and accounts return `409 onboarding_required` until the owner finishes onboarding.
