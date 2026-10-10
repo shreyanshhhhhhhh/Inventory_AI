@@ -1,7 +1,14 @@
 import pytest
 from sqlalchemy import func, select
 
-from app.models import Category, Product, PurchaseOrder, StockMovement, Supplier
+from app.models import (
+    Category,
+    Location,
+    Product,
+    PurchaseOrder,
+    StockMovement,
+    Supplier,
+)
 from app.services.demo_seed import DemoSeedError, load_demo_data
 from tests.helpers.tenant import signup_service_tenant
 
@@ -41,6 +48,32 @@ def test_demo_seed_creates_expected_counts(db) -> None:
         )
         == result["sale_movements_created"]
     )
+
+
+def test_demo_seed_leaves_usable_stock_across_two_locations(db) -> None:
+    owner = _owner(db)
+    business_id = owner.user.business_id
+    load_demo_data(db, business_id=business_id, actor_user_id=owner.user.id)
+
+    locations = db.scalars(select(Location).where(Location.business_id == business_id)).all()
+    assert len(locations) == 2
+
+    on_hand_by_product = dict(
+        db.execute(
+            select(StockMovement.product_id, func.sum(StockMovement.quantity))
+            .where(StockMovement.business_id == business_id)
+            .group_by(StockMovement.product_id)
+        ).all()
+    )
+    in_stock = [qty for qty in on_hand_by_product.values() if qty > 0]
+    assert len(in_stock) >= 90
+    assert all(qty >= 0 for qty in on_hand_by_product.values())
+
+    transfer_rows = db.scalars(
+        select(StockMovement).where(StockMovement.movement_type == "transfer")
+    ).all()
+    assert transfer_rows
+    assert {row.location_id for row in transfer_rows} == {loc.id for loc in locations}
 
 
 def test_demo_seed_refuses_second_run(db) -> None:

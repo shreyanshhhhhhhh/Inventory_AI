@@ -5,7 +5,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Category, Product, Supplier
+from app.models import Category, Location, Product, Supplier
 from app.models.types import new_id, utcnow
 from app.repositories import inventory as inventory_repo
 from app.services.audit import log_action
@@ -16,6 +16,8 @@ from app.services.purchase_orders import create_po, transition_po
 
 DEMO_SEED = 42
 PRODUCT_COUNT = 100
+DEMO_SECOND_LOCATION = "Backroom"
+TRANSFER_PRODUCT_COUNT = 15
 SUPPLIER_SPECS = [
     ("Green Valley Produce", 2),
     ("Summit Beverage Co.", 3),
@@ -132,6 +134,7 @@ def load_demo_data(
     session.flush()
 
     products: list[Product] = []
+    on_hand: dict[str, Decimal] = {}
     for index in range(1, PRODUCT_COUNT + 1):
         category = categories[(index - 1) % len(categories)]
         supplier = suppliers[(index - 1) % len(suppliers)]
@@ -178,6 +181,7 @@ def load_demo_data(
         )
 
         starting_stock = Decimal(rng.randint(30, 180))
+        on_hand[product.id] = starting_stock
         post_movement(
             session,
             business_id=business_id,
@@ -210,6 +214,23 @@ def load_demo_data(
 
         for product in day_products:
             quantity = Decimal(max(1, int(rng.randint(1, 4) * spike)))
+            if on_hand[product.id] < quantity:
+                # A year of sales outruns any single opening balance; simulate deliveries.
+                restock = Decimal(rng.randint(60, 160))
+                post_movement(
+                    session,
+                    business_id=business_id,
+                    actor_user_id=actor_user_id,
+                    product_id=product.id,
+                    location_id=default_location.id,
+                    movement_type="receipt",
+                    quantity=restock,
+                    note="Demo restock",
+                    occurred_at=occurred_at,
+                    commit=False,
+                )
+                on_hand[product.id] += restock
+                stock_movements_created += 1
             try:
                 post_movement(
                     session,
@@ -224,8 +245,54 @@ def load_demo_data(
                     commit=False,
                 )
                 sale_movements_created += 1
+                on_hand[product.id] -= quantity
             except InventoryError:
                 continue
+
+    locations_created = 0
+    active_locations = [loc for loc in locations if loc.archived_at is None]
+    if len(active_locations) < 2:
+        backroom = Location(
+            id=new_id(),
+            business_id=business_id,
+            name=DEMO_SECOND_LOCATION,
+            is_default=False,
+        )
+        session.add(backroom)
+        session.flush()
+        locations_created = 1
+        _audit_create(
+            session,
+            business_id=business_id,
+            actor_user_id=actor_user_id,
+            entity_type="location",
+            entity_id=backroom.id,
+            data={"name": backroom.name, "is_default": False},
+        )
+        second_location = backroom
+    else:
+        second_location = next(loc for loc in active_locations if loc.id != default_location.id)
+
+    transfer_at = datetime.combine(today, datetime.min.time(), tzinfo=timezone.utc)
+    for product in products[:TRANSFER_PRODUCT_COUNT]:
+        transfer_quantity = (on_hand[product.id] / 3).to_integral_value(rounding="ROUND_FLOOR")
+        if transfer_quantity < 1:
+            continue
+        post_movement(
+            session,
+            business_id=business_id,
+            actor_user_id=actor_user_id,
+            product_id=product.id,
+            location_id=default_location.id,
+            movement_type="transfer",
+            quantity=transfer_quantity,
+            destination_location_id=second_location.id,
+            note="Demo transfer",
+            occurred_at=transfer_at,
+            commit=False,
+        )
+        on_hand[product.id] -= transfer_quantity
+        stock_movements_created += 2
 
     log_action(
         session,
@@ -239,6 +306,7 @@ def load_demo_data(
             "products_created": PRODUCT_COUNT,
             "suppliers_created": len(SUPPLIER_SPECS),
             "categories_created": len(CATEGORY_NAMES),
+            "locations_created": locations_created,
         },
     )
 
