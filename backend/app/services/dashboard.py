@@ -4,6 +4,7 @@ from sqlalchemy import String, case, cast, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
 from app.models import AuditLog, Location, Product, PurchaseOrder, StockMovement
+from app.repositories import inventory as inventory_repo
 from app.services.inventory import compute_stock_status
 
 PO_STATUS_ACTIONS = (
@@ -52,19 +53,8 @@ def _low_stock_predicate(on_hand_column, reorder_point_column):
 def get_summary(session: Session, *, business_id: str) -> dict[str, object]:
     on_hand = _on_hand_subquery(business_id)
 
-    total_stock_value = session.scalar(
-        select(
-            func.coalesce(
-                func.sum(on_hand.c.on_hand * func.coalesce(Product.cost, 0)),
-                0,
-            )
-        )
-        .select_from(on_hand)
-        .join(Product, Product.id == on_hand.c.product_id)
-        .where(
-            on_hand.c.business_id == business_id,
-            Product.archived_at.is_(None),
-        )
+    total_stock_value, unvalued_product_count = inventory_repo.get_stock_valuation(
+        session, business_id=business_id
     )
 
     low_stock_count = session.scalar(
@@ -88,7 +78,8 @@ def get_summary(session: Session, *, business_id: str) -> dict[str, object]:
     )
 
     return {
-        "total_stock_value": Decimal(total_stock_value or 0),
+        "total_stock_value": total_stock_value,
+        "unvalued_product_count": unvalued_product_count,
         "low_stock_count": int(low_stock_count or 0),
         "open_purchase_orders": int(open_purchase_orders or 0),
         "pending_approvals": 0,

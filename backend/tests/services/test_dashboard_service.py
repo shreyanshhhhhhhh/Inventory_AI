@@ -31,7 +31,19 @@ def _product(
     sku: str,
     cost: str,
     reorder_point: str,
+    with_preferred_supplier: bool = True,
 ) -> str:
+    preferred_supplier_id = None
+    if with_preferred_supplier:
+        preferred_supplier_id = create_supplier(
+            db,
+            business_id=business_id,
+            actor_user_id=actor_user_id,
+            name=f"Supplier for {sku}",
+            email=None,
+            phone=None,
+            lead_time_days=1,
+        ).id
     product = create_product(
         db,
         business_id=business_id,
@@ -44,7 +56,7 @@ def _product(
         price=Decimal("9.99"),
         reorder_point=Decimal(reorder_point),
         safety_stock=Decimal("0"),
-        preferred_supplier_id=None,
+        preferred_supplier_id=preferred_supplier_id,
     )
     return product.id
 
@@ -115,6 +127,7 @@ def test_summary_matches_known_dataset(db) -> None:
 
     summary = get_summary(db, business_id=business_id)
     assert summary["total_stock_value"] == Decimal("31.00")
+    assert summary["unvalued_product_count"] == 0
     assert summary["low_stock_count"] == stock_total
 
     supplier = create_supplier(
@@ -222,6 +235,43 @@ def test_summary_matches_known_dataset(db) -> None:
     assert activity[0]["title"] == draft_po["po_number"]
     assert activity[0]["subtitle"] == "Approved"
     assert any(item["kind"] == "movement" for item in activity)
+
+
+def test_stock_value_skips_products_without_preferred_cost(db) -> None:
+    owner = _owner(db, email="dash-unvalued@example.com", business_name="Unvalued Shop")
+    business_id = owner.user.business_id
+    location_id = _default_location_id(db, business_id)
+    valued = _product(
+        db,
+        business_id=business_id,
+        actor_user_id=owner.user.id,
+        sku="VAL-1",
+        cost="2.50",
+        reorder_point="0",
+    )
+    unvalued = _product(
+        db,
+        business_id=business_id,
+        actor_user_id=owner.user.id,
+        sku="NOVAL-1",
+        cost="99.00",
+        reorder_point="0",
+        with_preferred_supplier=False,
+    )
+    for product_id in (valued, unvalued):
+        record_movement(
+            db,
+            business_id=business_id,
+            actor_user_id=owner.user.id,
+            product_id=product_id,
+            location_id=location_id,
+            movement_type="receipt",
+            quantity=Decimal("4"),
+        )
+
+    summary = get_summary(db, business_id=business_id)
+    assert summary["total_stock_value"] == Decimal("10.00")
+    assert summary["unvalued_product_count"] == 1
 
 
 def test_tenant_isolation(db) -> None:

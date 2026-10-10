@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Product, PurchaseOrder, PurchaseOrderItem, StockMovement, Supplier
 from app.models.types import utcnow
+from app.repositories import inventory as inventory_repo
 
 IN_MOVEMENT_TYPES = ("receipt", "purchase_receipt")
 OPEN_PO_STATUSES = ("draft", "approved", "sent")
@@ -21,24 +22,6 @@ def _movement_window(*, days: int) -> tuple[datetime, datetime, list[date]]:
     end = datetime.combine(today, time.max, tzinfo=timezone.utc)
     day_list = [start_day + timedelta(days=offset) for offset in range(days)]
     return start, end, day_list
-
-
-def _on_hand_subquery(business_id: str):
-    return (
-        select(
-            StockMovement.business_id.label("business_id"),
-            StockMovement.product_id.label("product_id"),
-            StockMovement.location_id.label("location_id"),
-            func.sum(StockMovement.quantity).label("on_hand"),
-        )
-        .where(StockMovement.business_id == business_id)
-        .group_by(
-            StockMovement.business_id,
-            StockMovement.product_id,
-            StockMovement.location_id,
-        )
-        .subquery()
-    )
 
 
 def get_movements_over_time(
@@ -167,24 +150,13 @@ def _sum_po_value(session: Session, *, business_id: str, statuses: tuple[str, ..
 
 
 def get_accounts_summary(session: Session, *, business_id: str) -> dict[str, object]:
-    on_hand = _on_hand_subquery(business_id)
-    stock_value = session.scalar(
-        select(
-            func.coalesce(
-                func.sum(on_hand.c.on_hand * func.coalesce(Product.cost, 0)),
-                0,
-            )
-        )
-        .select_from(on_hand)
-        .join(Product, Product.id == on_hand.c.product_id)
-        .where(
-            on_hand.c.business_id == business_id,
-            Product.archived_at.is_(None),
-        )
+    stock_value, unvalued_product_count = inventory_repo.get_stock_valuation(
+        session, business_id=business_id
     )
 
     return {
-        "stock_value": Decimal(stock_value or 0),
+        "stock_value": stock_value,
+        "unvalued_product_count": unvalued_product_count,
         "open_po_value": _sum_po_value(session, business_id=business_id, statuses=OPEN_PO_STATUSES),
         "payables_due": _sum_po_value(
             session,

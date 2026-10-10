@@ -9,6 +9,7 @@ from app.schemas.inventory import StockStatus, _serialize_decimal
 
 class DashboardSummaryResponse(BaseModel):
     total_stock_value: Decimal
+    unvalued_product_count: int = 0
     low_stock_count: int
     open_purchase_orders: int
     pending_approvals: int = 0

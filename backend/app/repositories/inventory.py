@@ -2,10 +2,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
-from app.models import Location, Product, StockMovement, User
+from app.models import Location, Product, ProductSupplier, StockMovement, User
 
 
 @dataclass(frozen=True)
@@ -83,6 +83,60 @@ def get_on_hand(
         )
     )
     return Decimal(total or 0)
+
+
+def get_stock_valuation(session: Session, *, business_id: str) -> tuple[Decimal, int]:
+    """Return (value of stock with a preferred supplier cost, count of stocked products without one)."""
+    preferred_cost = (
+        select(
+            ProductSupplier.product_id.label("product_id"),
+            func.max(ProductSupplier.unit_cost).label("unit_cost"),
+        )
+        .where(
+            ProductSupplier.business_id == business_id,
+            ProductSupplier.is_preferred.is_(True),
+        )
+        .group_by(ProductSupplier.product_id)
+        .subquery()
+    )
+    on_hand = (
+        select(
+            StockMovement.product_id.label("product_id"),
+            func.sum(StockMovement.quantity).label("on_hand"),
+        )
+        .where(StockMovement.business_id == business_id)
+        .group_by(StockMovement.product_id)
+        .subquery()
+    )
+    row = session.execute(
+        select(
+            func.coalesce(
+                func.sum(
+                    case(
+                        (
+                            preferred_cost.c.unit_cost.is_not(None),
+                            on_hand.c.on_hand * preferred_cost.c.unit_cost,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ).label("value"),
+            func.coalesce(
+                func.sum(case((preferred_cost.c.unit_cost.is_(None), 1), else_=0)),
+                0,
+            ).label("unvalued"),
+        )
+        .select_from(on_hand)
+        .join(Product, Product.id == on_hand.c.product_id)
+        .outerjoin(preferred_cost, preferred_cost.c.product_id == on_hand.c.product_id)
+        .where(
+            Product.business_id == business_id,
+            Product.archived_at.is_(None),
+            on_hand.c.on_hand > 0,
+        )
+    ).one()
+    return Decimal(row.value or 0), int(row.unvalued or 0)
 
 
 def insert_movement(session: Session, movement: StockMovement) -> StockMovement:

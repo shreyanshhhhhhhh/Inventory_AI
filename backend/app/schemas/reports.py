@@ -39,6 +39,7 @@ class TopSellersResponse(BaseModel):
 
 class AccountsSummaryResponse(BaseModel):
     stock_value: Decimal
+    unvalued_product_count: int = 0
     open_po_value: Decimal
     payables_due: Decimal
 

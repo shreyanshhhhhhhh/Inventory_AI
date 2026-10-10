@@ -37,6 +37,15 @@ def _product(
     sku: str,
     cost: str = "2.00",
 ) -> str:
+    supplier = create_supplier(
+        db,
+        business_id=business_id,
+        actor_user_id=actor_user_id,
+        name=f"Supplier for {sku}",
+        email=None,
+        phone=None,
+        lead_time_days=1,
+    )
     product = create_product(
         db,
         business_id=business_id,
@@ -49,7 +58,7 @@ def _product(
         price=Decimal("5.00"),
         reorder_point=Decimal("5"),
         safety_stock=Decimal("0"),
-        preferred_supplier_id=None,
+        preferred_supplier_id=supplier.id,
     )
     return product.id
 
