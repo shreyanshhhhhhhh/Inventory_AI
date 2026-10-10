@@ -6,6 +6,10 @@ from pathlib import Path
 _test_db_path = Path(tempfile.gettempdir()) / "inventory-auth-test.db"
 os.environ["DATABASE_URL"] = f"sqlite:///{_test_db_path.as_posix()}"
 os.environ["JWT_SECRET"] = "test-jwt-secret-not-for-production"
+os.environ["LLM_PROVIDER"] = "fake"
+os.environ["LLM_MODEL"] = "fake-model"
+os.environ.pop("GEMINI_API_KEY", None)
+os.environ.pop("GROQ_API_KEY", None)
 
 import pytest
 from fastapi.testclient import TestClient

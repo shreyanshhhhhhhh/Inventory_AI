@@ -34,12 +34,13 @@ interface SettingsContextValue {
   isOwner: boolean;
   businessName: string;
   currencyCode: string;
-  /** Currency is fixed once onboarding is complete (amounts are stored without conversion). */
   currencyLocked: boolean;
-  /** Active and archived locations; filter on `isActive`. */
   locations: SettingsLocation[];
   teamUsers: SettingsTeamUser[];
   autoApproveBelow: string;
+  exceptionScanEnabled: boolean;
+  exceptionScanHourUtc: number;
+  chaseFollowupDays: number;
   isLoading: boolean;
   error: string | null;
   refresh: () => Promise<void>;
@@ -65,19 +66,30 @@ interface SettingsContextValue {
   }) => Promise<void>;
   updateUserRole: (userId: string, role: "owner" | "staff") => Promise<void>;
   setUserActive: (userId: string, isActive: boolean) => Promise<void>;
-  saveAutonomyRules: (autoApproveBelow: string | null) => Promise<void>;
+  saveAutonomyRules: (input: {
+    autoApproveBelow: string | null;
+    exceptionScanEnabled: boolean;
+    exceptionScanHourUtc: number;
+    chaseFollowupDays: number;
+  }) => Promise<void>;
 }
 
 type SettingsData = {
   locations: SettingsLocation[];
   teamUsers: SettingsTeamUser[];
   autoApproveBelow: string;
+  exceptionScanEnabled: boolean;
+  exceptionScanHourUtc: number;
+  chaseFollowupDays: number;
 };
 
 const EMPTY_SETTINGS: SettingsData = {
   locations: [],
   teamUsers: [],
   autoApproveBelow: "",
+  exceptionScanEnabled: true,
+  exceptionScanHourUtc: 2,
+  chaseFollowupDays: 3,
 };
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
@@ -106,6 +118,9 @@ async function fetchSettings(): Promise<LoadResult<SettingsData>> {
           isActive: row.is_active,
         })),
         autoApproveBelow: autonomy.auto_approve_below_amount ?? "",
+        exceptionScanEnabled: autonomy.exception_scan_enabled,
+        exceptionScanHourUtc: autonomy.exception_scan_hour_utc,
+        chaseFollowupDays: autonomy.chase_followup_days ?? 3,
       },
       error: null,
     };
@@ -130,6 +145,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     if (!ready) return;
+    setIsLoading(true);
     apply(await fetchSettings());
   }, [ready, apply]);
 
@@ -218,7 +234,6 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     async (userId: string, role: "owner" | "staff") => {
       await api.settings.users.updateRole(userId, { role });
       if (role === "owner") {
-        // Promoting someone else transfers ownership; the current user becomes staff.
         await refreshSession();
         return;
       }
@@ -236,9 +251,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   );
 
   const saveAutonomyRules = useCallback(
-    async (value: string | null) => {
+    async (input: {
+      autoApproveBelow: string | null;
+      exceptionScanEnabled: boolean;
+      exceptionScanHourUtc: number;
+      chaseFollowupDays: number;
+    }) => {
       await api.settings.autonomyRules.update({
-        auto_approve_below_amount: value,
+        auto_approve_below_amount: input.autoApproveBelow,
+        exception_scan_enabled: input.exceptionScanEnabled,
+        exception_scan_hour_utc: input.exceptionScanHourUtc,
+        chase_followup_days: input.chaseFollowupDays,
       });
       await refresh();
     },
@@ -255,6 +278,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       locations: current.locations,
       teamUsers: current.teamUsers,
       autoApproveBelow: current.autoApproveBelow,
+      exceptionScanEnabled: current.exceptionScanEnabled,
+      exceptionScanHourUtc: current.exceptionScanHourUtc,
+      chaseFollowupDays: current.chaseFollowupDays,
       isLoading: ready && isLoading,
       error: ready ? error : null,
       refresh,

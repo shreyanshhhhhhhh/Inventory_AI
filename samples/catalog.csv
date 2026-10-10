@@ -1,0 +1,17 @@
+sku,name,category,location,quantity,unit,reorder_point,supplier,unit_cost,lead_time_days
+APPLE-001,Honeycrisp Apples,Produce,Main Store,80,kg,20,Green Valley Produce,2.40,2
+BANANA-001,Bananas,Produce,Main Store,30,kg,18,Green Valley Produce,0.85,2
+MILK-001,Whole Milk 1L,Dairy,Main Store,50,each,20,Coastal Dairy,1.10,1
+YOGURT-001,Greek Yogurt 170g,Dairy,Main Store,24,each,6,Coastal Dairy,1.75,1
+COLA-012,Cola 12-pack,Beverages,Main Store,36,case,8,Summit Beverage Co.,6.50,3
+WATER-024,Spring Water 24pk,Beverages,Main Store,6,case,4,Summit Beverage Co.,4.25,3
+RICE-005,Jasmine Rice 5kg,Grocery,Main Store,40,each,6,Metro Grocery Wholesale,8.00,5
+PASTA-500,Spaghetti 500g,Grocery,Main Store,18,each,12,Metro Grocery Wholesale,1.20,5
+SOAP-001,Hand Soap,Household,Warehouse,40,each,8,Harbor Household Supply,2.10,7
+TOWEL-001,Paper Towels 6pk,Household,Warehouse,14,each,10,Harbor Household Supply,3.40,7
+BREAD-001,Sourdough Loaf,Bakery,Main Store,40,each,10,Harbor Household Supply,2.50,7
+COOKIE-001,Chocolate Chunk Cookies,Bakery,Main Store,20,each,5,Harbor Household Supply,1.80,7
+OATS-001,Bulk Rolled Oats,Grocery,Main Store,25.5,kg,5.5,Metro Grocery Wholesale,1.25,5
+PUMP-001,Seasonal Pumpkin,Produce,Main Store,16,each,10,Green Valley Produce,3.00,2
+OIL-001,Olive Oil 1L,Grocery,Main Store,0,each,4,Metro Grocery Wholesale,9.50,5
+MIN-001,Shop Tote,Household,Main Store,8,each,2,Harbor Household Supply,4.00,7

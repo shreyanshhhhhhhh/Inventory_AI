@@ -26,6 +26,12 @@ export function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
+export function formatQuantity(value: number): string {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function formatDate(value: string): string {
   return new Intl.DateTimeFormat("en-US", {
     month: "short",

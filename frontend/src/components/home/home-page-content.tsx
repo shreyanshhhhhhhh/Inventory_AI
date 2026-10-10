@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useDashboard } from "@/lib/dashboard-hooks";
+import { useInboxSuggestions } from "@/lib/chat/suggestions";
 import { formatCurrency, formatDateTime } from "@/lib/format";
 
 export function HomePageContent() {
@@ -32,6 +33,8 @@ export function HomePageContent() {
     error,
     refresh,
   } = useDashboard();
+  const { items: inboxItems, setStatus } = useInboxSuggestions();
+  const pendingInbox = inboxItems.filter((item) => item.status === "pending");
 
   if (isLoading) {
     return (
@@ -95,7 +98,7 @@ export function HomePageContent() {
         <StatCard
           label="Pending approvals"
           value={String(pendingApprovals)}
-          subtext="Agent inbox placeholder"
+          subtext="From Agent Inbox"
           icon={ClipboardList}
         />
       </div>
@@ -190,11 +193,44 @@ export function HomePageContent() {
             <CardDescription>Agent suggestions will land here.</CardDescription>
           </CardHeader>
           <CardContent>
-            <EmptyState
-              icon={ClipboardList}
-              title="No pending approvals"
-              message="When procurement agents are enabled, proposed purchase orders will appear here for review."
-            />
+            {pendingInbox.length === 0 ? (
+              <EmptyState
+                icon={ClipboardList}
+                title="No pending approvals"
+                message="Draft POs and emails from Agent Inbox will show up here."
+              />
+            ) : (
+              <div className="space-y-3">
+                {pendingInbox.map((item) => (
+                  <div key={item.id} className="rounded-lg border px-3 py-2">
+                    <p className="text-sm font-medium">{item.title}</p>
+                    <p className="text-xs text-muted-foreground">{item.summary}</p>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-primary hover:underline"
+                        onClick={() => setStatus(item.id, "approved")}
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-muted-foreground hover:underline"
+                        onClick={() => setStatus(item.id, "rejected")}
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <Link
+                  href="/inbox"
+                  className="inline-flex text-sm font-medium text-primary hover:underline"
+                >
+                  Open Agent Inbox
+                </Link>
+              </div>
+            )}
           </CardContent>
         </Card>
 

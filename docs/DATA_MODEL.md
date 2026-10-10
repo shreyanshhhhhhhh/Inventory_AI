@@ -1,6 +1,6 @@
 # Data model
 
-Phase 1 schema only. No forecast tables, no LangGraph checkpoint tables, no inbox tables.
+Phase 1 schema, plus a computed Phase 2 demand forecast, the Phase 3 AI foundation tables (`agent_runs`, `agent_steps`, `agent_suggestions`, `llm_usage_counters`), orchestrator columns on `agent_runs`, `chat_messages`, `exceptions`, `supplier_messages`, and `supplier_replies`. No forecast table, no LangGraph checkpoint tables, and no inbox UI tables.
 
 **Multi-tenant assumption:** a user belongs to one business. Almost every row is scoped by `business_id`. The API takes `business_id` from the JWT, not from the client. Exception: `refresh_tokens` hang off `users`. Signup creates the business and the owner together, so `users.business_id` is set immediately. The column stays nullable. `onboarding_completed_at` stays null until the onboarding wizard, which is not part of signup.
 
@@ -35,7 +35,18 @@ erDiagram
   users ||--o{ stock_movements : recorded_by
   businesses ||--o{ audit_log : traces
   businesses ||--o| autonomy_rules : configures
+  businesses ||--o{ exceptions : flags
+  agent_runs |o--o{ exceptions : scan
+  agent_suggestions |o--o{ exceptions : recommends
   users |o--o{ audit_log : actor
+  businesses ||--o{ agent_runs : traces
+  users |o--o{ agent_runs : actor
+  agent_runs ||--o{ agent_steps : records
+  agent_runs ||--o{ agent_suggestions : proposes
+  businesses ||--o{ llm_usage_counters : budgets
+  businesses ||--o{ chat_messages : chat
+  users ||--o{ chat_messages : author
+  agent_runs |o--o{ chat_messages : run
 ```
 
 Signup sets `users.business_id` and `role` (`owner`) in the same transaction as the business. Currency on that business is `USD` until onboarding changes it. `onboarding_completed_at` stays null until that wizard finishes. The diagram shows the steady state.
@@ -65,6 +76,8 @@ Quantity is signed. Inbound is positive. Outbound is negative. `SUM` is the bala
 Received quantity on a purchase-order line is `SUM(quantity)` of `purchase_receipt` rows with that `purchase_order_item_id`. It is not stored on the line.
 
 Inventory value is that on-hand sum times the preferred `product_suppliers.unit_cost`. It is computed, not stored. Products with stock but no preferred supplier cost are excluded from the value and counted as `unvalued_product_count`, so the UI can say the total is partial instead of treating the cost as zero. `products.cost` is not used for valuation.
+
+Demand forecasts are computed the same way. For one SKU, history is the daily sum of `sale` quantities with the sign flipped, across every location. The forecast service projects the next 14 days from that series. Nothing is written back to the ledger or to a purchase order.
 
 `actor_type` on `audit_log` is the forward-looking hook. Phase 1 only writes `user`. A later phase may write `agent` and may add explanation storage. Do not add those tables now.
 
@@ -119,7 +132,11 @@ One business per user in Phase 1. No currency table.
 | --- | --- | --- |
 | id | CHAR(36) | PK |
 | business_id | CHAR(36) | FK, unique — one row per business |
-| auto_approve_below_amount | NUMERIC(18, 4) NULL | Stored only in Phase 1; no runtime effect until agents launch |
+| auto_approve_below_amount | NUMERIC(18, 4) NULL | When set, a guarded purchase suggestion whose total is strictly below this amount is auto-approved into a draft PO. Null means always ask the owner |
+| exception_scan_enabled | BOOLEAN | Default true. Owner can turn off nightly scans |
+| exception_scan_hour_utc | INTEGER | Default 2. Hour in UTC for the scheduled scan |
+| exception_scan_last_run_on | DATE NULL | UTC date of the last completed scan |
+| chase_followup_days | INTEGER | Default 3. Sent chases with no reply after this many days raise `chase_no_reply` |
 | created_at | datetime | |
 | updated_at | datetime | |
 
@@ -303,6 +320,154 @@ Insert-only. Who, what, when, before, after.
 | created_at | datetime | When |
 
 Written in the same transaction as the change. Phase 1 does not add `agent_run_id` or an explanation column. CSV import and demo data write one `*.create` row per category, supplier, and product they create. Owners read the log through `GET /audit-log`, filterable by `entity_type`, `entity_id`, and `action`.
+
+## agent_runs
+
+One row per agent or orchestrator execution. Status, `finished_at`, `error_message`, plan, and event log may change while the run is open.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| agent_name | VARCHAR(80) | `orchestrator`, `echo`, later `replenishment` |
+| status | VARCHAR(20) | `running`, `awaiting_approval`, `completed`, `failed`, `cancelled` |
+| prompt_name | VARCHAR(80) NULL | Primary prompt for the run, when known |
+| prompt_version | VARCHAR(32) NULL | Version from the prompt registry |
+| actor_user_id | CHAR(36) NULL | Who started the run. Null for a later scheduled job |
+| started_at | datetime | |
+| finished_at | datetime NULL | Set when the run ends |
+| error_message | TEXT NULL | Set on `failed` |
+| input_text | TEXT NULL | User message for orchestrator runs |
+| plan_data | JSON NULL | Validated DAG |
+| state_data | JSON NULL | Resume payload after approval |
+| events_data | JSON NULL | SSE events already emitted |
+| cancel_requested | BOOLEAN | Set by `POST /chat/runs/{id}/cancel` |
+
+## agent_steps
+
+Append-only. Every LLM call and every tool call.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| run_id | CHAR(36) | FK agent_runs |
+| business_id | CHAR(36) | FK |
+| step_kind | VARCHAR(20) | `llm` or `tool` |
+| tool_name | VARCHAR(80) NULL | Set on `tool` |
+| prompt_name | VARCHAR(80) NULL | Set on `llm` |
+| prompt_version | VARCHAR(32) NULL | Set on `llm` |
+| input_data | JSON NULL | Messages or tool arguments |
+| output_data | JSON NULL | Text, structured result, or tool output |
+| duration_ms | INTEGER | |
+| tokens_in | INTEGER NULL | LLM only |
+| tokens_out | INTEGER NULL | LLM only |
+| created_at | datetime | Insert time. No `updated_at` |
+
+## agent_suggestions
+
+The only write target for agent tools. Tools never create purchase orders, send email, or post stock. Approving a `draft_po` suggestion is a separate owner action that creates a draft purchase order.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| run_id | CHAR(36) | FK agent_runs |
+| suggestion_type | VARCHAR(32) | `generic`, `draft_po`, `draft_email` |
+| status | VARCHAR(20) | `pending` on create. Owner approve/reject sets `approved` or `rejected`. `dismissed` is reserved |
+| payload | JSON | Lines, supplier, evidence (reason codes, on-hand, forecast units and model, lead time, reliability), confidence, caveats, guardrail result, and `decisions` (`action`, `reason`, `actor_user_id`, `at`, `purchase_order_id`) |
+| created_at | datetime | |
+
+## exceptions
+
+Open findings from the exception monitor. Dedupe is unique among **open** rows per `(business_id, dedupe_key)`.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| exception_type | VARCHAR(40) | `stockout_risk`, `overstock`, `demand_spike`, `demand_drop`, `supplier_delay`, `data_anomaly`, `chase_no_reply` |
+| severity | VARCHAR(20) | `low`, `medium`, `high`, `critical` |
+| status | VARCHAR(20) | `open`, `resolved`, `ignored` |
+| entity_type | VARCHAR(80) | `product`, `purchase_order`, `supplier`, `stock_movement` |
+| entity_id | CHAR(36) | |
+| dedupe_key | VARCHAR(240) | Stable id so a nightly run does not recreate the same open issue |
+| title | VARCHAR(240) | |
+| evidence | JSON | Detector numbers plus `reason_codes`, forecast method/model, lead time, and reliability when known. The explainer cites these fields. `agent_steps` for the `run_id` is the tool/LLM trace. |
+| recommended_action | VARCHAR(40) NULL | Playbook action |
+| rationale | TEXT NULL | LLM sentence, clipped to playbook |
+| suggestion_id | CHAR(36) NULL | FK agent_suggestions when approval is needed |
+| run_id | CHAR(36) NULL | FK agent_runs |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+## llm_usage_counters
+
+Per-business daily LLM budget. The window is the UTC calendar day.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| usage_date | DATE | UTC date |
+| request_count | INTEGER | Completed gateway calls that day |
+| token_count | INTEGER | Sum of tokens in plus tokens out |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+Unique `(business_id, usage_date)`.
+
+## chat_messages
+
+Recent turns for orchestrator context. Scoped by `business_id` and `user_id`.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| user_id | CHAR(36) | FK users |
+| role | VARCHAR(20) | `user`, `assistant`, `system` |
+| content | TEXT | |
+| run_id | CHAR(36) NULL | FK agent_runs |
+| created_at | datetime | |
+
+The orchestrator loads the last `ORCHESTRATOR_CHAT_HISTORY` rows (default 6) as DATA. Names in that text are resolved to ids in code.
+
+## supplier_messages
+
+Canonical supplier email drafts. The agent tool inserts `status=draft` and a matching `agent_suggestions` row. Sending uses `EmailSender` only after the owner approves.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK |
+| supplier_id | CHAR(36) | FK |
+| po_id | CHAR(36) NULL | FK purchase_orders |
+| kind | VARCHAR(32) | `order`, `chase`, `expedite`, `delay-notice` |
+| subject | VARCHAR(240) | Template subject with the PO number filled in code |
+| body | TEXT | Template body. LLM fills greeting/ask/closing only |
+| status | VARCHAR(20) | `draft`, `approved`, `sent`, `failed`, `rejected` |
+| created_by | CHAR(36) | FK users |
+| approved_by | CHAR(36) NULL | FK users. Set on owner send |
+| sent_at | datetime NULL | Set when `EmailSender.send` succeeds |
+| thread_id | CHAR(36) | Groups later replies |
+| facts | JSON | PO numbers, quantities, and dates used for grounding |
+| suggestion_id | CHAR(36) NULL | FK agent_suggestions |
+| created_at | datetime | |
+| updated_at | datetime | |
+
+## supplier_replies
+
+Inbound paste or webhook text. The body is untrusted DATA. Extracted fields never send mail or change a PO by themselves.
+
+| Column | Type | Notes |
+| --- | --- | --- |
+| id | CHAR(36) | PK |
+| business_id | CHAR(36) | FK. Tenant isolation |
+| message_id | CHAR(36) | FK supplier_messages |
+| received_at | datetime | |
+| body | TEXT | Raw reply |
+| parsed | JSON | `confirmed_date`, `quantity_confirmed`, `delay_days`, `price_change`, `ignored_injection` |
+| created_at | datetime | |
 
 ## Tenant and delete rules
 

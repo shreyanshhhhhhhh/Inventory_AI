@@ -12,6 +12,7 @@ import {
 
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
+import { useInboxSuggestions } from "@/lib/chat/suggestions";
 import type {
   ApiDashboardActivityItem,
   ApiNeedsAttentionItem,
@@ -126,6 +127,7 @@ async function fetchDashboard(): Promise<LoadResult<DashboardData>> {
 
 export function DashboardProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isOnboarded } = useAuth();
+  const { pendingCount } = useInboxSuggestions();
   const ready = isAuthenticated && isOnboarded;
   const [data, setData] = useState<DashboardData>(EMPTY_DASHBOARD);
   const [isLoading, setIsLoading] = useState(true);
@@ -154,15 +156,16 @@ export function DashboardProvider({ children }: { children: ReactNode }) {
     };
   }, [ready, apply]);
 
-  const value = useMemo<DashboardContextValue>(
-    () => ({
-      ...(ready ? data : EMPTY_DASHBOARD),
+  const value = useMemo<DashboardContextValue>(() => {
+    const base = ready ? data : EMPTY_DASHBOARD;
+    return {
+      ...base,
+      pendingApprovals: base.pendingApprovals + pendingCount,
       isLoading: ready && isLoading,
       error: ready ? error : null,
       refresh,
-    }),
-    [ready, data, isLoading, error, refresh],
-  );
+    };
+  }, [ready, data, pendingCount, isLoading, error, refresh]);
 
   return (
     <DashboardContext.Provider value={value}>{children}</DashboardContext.Provider>

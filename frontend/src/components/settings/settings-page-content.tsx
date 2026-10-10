@@ -21,6 +21,9 @@ export function SettingsPageContent() {
     currencyLocked,
     locations,
     autoApproveBelow,
+    exceptionScanEnabled,
+    exceptionScanHourUtc,
+    chaseFollowupDays,
     isLoading,
     error,
     refresh,
@@ -87,8 +90,11 @@ export function SettingsPageContent() {
           onRestore={restoreLocation}
         />
         <AutonomyRulesCard
-          key={autoApproveBelow}
+          key={`${autoApproveBelow}:${exceptionScanEnabled}:${exceptionScanHourUtc}:${chaseFollowupDays}`}
           initialAutoApproveBelow={autoApproveBelow}
+          initialExceptionScanEnabled={exceptionScanEnabled}
+          initialExceptionScanHourUtc={exceptionScanHourUtc}
+          initialChaseFollowupDays={chaseFollowupDays}
           onSave={saveAutonomyRules}
         />
       </div>

@@ -3,8 +3,9 @@ from decimal import Decimal
 from sqlalchemy import String, case, cast, func, literal, or_, select, union_all
 from sqlalchemy.orm import Session
 
-from app.models import AuditLog, Location, Product, PurchaseOrder, StockMovement
+from app.models import AgentSuggestion, AuditLog, Location, Product, PurchaseOrder, StockMovement
 from app.repositories import inventory as inventory_repo
+from app.services.exceptions import count_open
 from app.services.inventory import compute_stock_status
 
 PO_STATUS_ACTIONS = (
@@ -79,13 +80,22 @@ def get_summary(session: Session, *, business_id: str) -> dict[str, object]:
         )
     )
 
+    pending_approvals = session.scalar(
+        select(func.count())
+        .select_from(AgentSuggestion)
+        .where(
+            AgentSuggestion.business_id == business_id,
+            AgentSuggestion.status == "pending",
+        )
+    )
+
     return {
         "total_stock_value": total_stock_value,
         "unvalued_product_count": unvalued_product_count,
         "low_stock_count": int(low_stock_count or 0),
         "open_purchase_orders": int(open_purchase_orders or 0),
-        "pending_approvals": 0,
-        "open_exceptions": 0,
+        "pending_approvals": int(pending_approvals or 0),
+        "open_exceptions": count_open(session, business_id=business_id),
     }
 
 

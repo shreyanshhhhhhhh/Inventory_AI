@@ -1,0 +1,64 @@
+date,sku,name,category,location,quantity,unit,reorder_point,supplier,unit_cost,lead_time_days,note
+2026-08-12,APPLE-001,Honeycrisp Apples,Produce,Main Store,4,kg,20,Green Valley Produce,2.40,2,Weekday
+2026-08-12,BREAD-001,Sourdough Loaf,Bakery,Main Store,3,each,10,Harbor Household Supply,2.50,7,Weekday
+2026-08-13,MILK-001,Whole Milk 1L,Dairy,Main Store,2,each,20,Coastal Dairy,1.10,1,Steady
+2026-08-19,BANANA-001,Bananas,Produce,Main Store,4,kg,18,Green Valley Produce,0.85,2,Weekday
+2026-08-21,RICE-005,Jasmine Rice 5kg,Grocery,Main Store,1,each,6,Metro Grocery Wholesale,8.00,5,Slow
+2026-08-26,SOAP-001,Hand Soap,Household,Warehouse,2,each,8,Harbor Household Supply,2.10,7,Warehouse sale
+2026-09-02,WATER-024,Spring Water 24pk,Beverages,Main Store,2,case,4,Summit Beverage Co.,4.25,3,Case sale
+2026-09-04,RICE-005,Jasmine Rice 5kg,Grocery,Main Store,1,each,6,Metro Grocery Wholesale,8.00,5,Slow
+2026-09-06,APPLE-001,Honeycrisp Apples,Produce,Main Store,5,kg,20,Green Valley Produce,2.40,2,Mid month
+2026-09-11,TOWEL-001,Paper Towels 6pk,Household,Warehouse,2,each,10,Harbor Household Supply,3.40,7,Warehouse sale
+2026-09-13,COOKIE-001,Chocolate Chunk Cookies,Bakery,Main Store,2,each,5,Harbor Household Supply,1.80,7,Bakery
+2026-09-16,OATS-001,Bulk Rolled Oats,Grocery,Main Store,0.5,kg,5.5,Metro Grocery Wholesale,1.25,5,Bulk
+2026-09-18,RICE-005,Jasmine Rice 5kg,Grocery,Main Store,1,each,6,Metro Grocery Wholesale,8.00,5,Slow
+2026-09-21,WATER-024,Spring Water 24pk,Beverages,Main Store,2,case,4,Summit Beverage Co.,4.25,3,Case sale
+2026-09-29,PASTA-500,Spaghetti 500g,Grocery,Main Store,1,each,12,Metro Grocery Wholesale,1.20,5,Steady
+2026-09-30,APPLE-001,Honeycrisp Apples,Produce,Main Store,4,kg,20,Green Valley Produce,2.40,2,Weekday
+2026-09-30,BANANA-001,Bananas,Produce,Main Store,2,kg,18,Green Valley Produce,0.85,2,Weekday
+2026-09-30,MILK-001,Whole Milk 1L,Dairy,Main Store,2,each,20,Coastal Dairy,1.10,1,Steady
+2026-09-30,PASTA-500,Spaghetti 500g,Grocery,Main Store,1,each,12,Metro Grocery Wholesale,1.20,5,Steady
+2026-09-30,BREAD-001,Sourdough Loaf,Bakery,Main Store,1,each,10,Harbor Household Supply,2.50,7,Weekday
+2026-10-01,APPLE-001,Honeycrisp Apples,Produce,Main Store,4,kg,20,Green Valley Produce,2.40,2,Weekday
+2026-10-01,BANANA-001,Bananas,Produce,Main Store,2,kg,18,Green Valley Produce,0.85,2,Weekday
+2026-10-01,MILK-001,Whole Milk 1L,Dairy,Main Store,2,each,20,Coastal Dairy,1.10,1,Steady
+2026-10-01,PASTA-500,Spaghetti 500g,Grocery,Main Store,1,each,12,Metro Grocery Wholesale,1.20,5,Steady
+2026-10-01,BREAD-001,Sourdough Loaf,Bakery,Main Store,1,each,10,Harbor Household Supply,2.50,7,Weekday
+2026-10-02,APPLE-001,Honeycrisp Apples,Produce,Main Store,4,kg,20,Green Valley Produce,2.40,2,Weekday
+2026-10-02,BANANA-001,Bananas,Produce,Main Store,2,kg,18,Green Valley Produce,0.85,2,Weekday
+2026-10-02,MILK-001,Whole Milk 1L,Dairy,Main Store,2,each,20,Coastal Dairy,1.10,1,Steady
+2026-10-02,RICE-005,Jasmine Rice 5kg,Grocery,Main Store,1,each,6,Metro Grocery Wholesale,8.00,5,Slow
+2026-10-02,PASTA-500,Spaghetti 500g,Grocery,Main Store,1,each,12,Metro Grocery Wholesale,1.20,5,Steady
+2026-10-02,BREAD-001,Sourdough Loaf,Bakery,Main Store,1,each,10,Harbor Household Supply,2.50,7,Weekday
+2026-10-03,APPLE-001,Honeycrisp Apples,Produce,Main Store,6,kg,20,Green Valley Produce,2.40,2,Weekend
+2026-10-03,BANANA-001,Bananas,Produce,Main Store,2,kg,18,Green Valley Produce,0.85,2,Weekday
+2026-10-03,MILK-001,Whole Milk 1L,Dairy,Main Store,2,each,20,Coastal Dairy,1.10,1,Steady
+2026-10-03,YOGURT-001,Greek Yogurt 170g,Dairy,Main Store,2,each,6,Coastal Dairy,1.75,1,Recent only
+2026-10-03,PASTA-500,Spaghetti 500g,Grocery,Main Store,1,each,12,Metro Grocery Wholesale,1.20,5,Steady
+2026-10-03,TOWEL-001,Paper Towels 6pk,Household,Warehouse,3,each,10,Harbor Household Supply,3.40,7,Warehouse sale
+2026-10-03,BREAD-001,Sourdough Loaf,Bakery,Main Store,1,each,10,Harbor Household Supply,2.50,7,Weekday
+2026-10-04,APPLE-001,Honeycrisp Apples,Produce,Main Store,10,kg,20,Green Valley Produce,2.40,2,Weekend
+2026-10-04,BANANA-001,Bananas,Produce,Main Store,2,kg,18,Green Valley Produce,0.85,2,Weekday
+2026-10-04,MILK-001,Whole Milk 1L,Dairy,Main Store,2,each,20,Coastal Dairy,1.10,1,Steady
+2026-10-04,YOGURT-001,Greek Yogurt 170g,Dairy,Main Store,2,each,6,Coastal Dairy,1.75,1,Recent only
+2026-10-04,PASTA-500,Spaghetti 500g,Grocery,Main Store,1,each,12,Metro Grocery Wholesale,1.20,5,Steady
+2026-10-04,SOAP-001,Hand Soap,Household,Warehouse,2,each,8,Harbor Household Supply,2.10,7,Warehouse sale
+2026-10-04,COOKIE-001,Chocolate Chunk Cookies,Bakery,Main Store,1,each,5,Harbor Household Supply,1.80,7,Bakery
+2026-10-04,BREAD-001,Sourdough Loaf,Bakery,Main Store,1,each,10,Harbor Household Supply,2.50,7,Weekday
+2026-10-04,PUMP-001,Seasonal Pumpkin,Produce,Main Store,2,each,10,Green Valley Produce,3.00,2,New item
+2026-10-05,APPLE-001,Honeycrisp Apples,Produce,Main Store,8,kg,20,Green Valley Produce,2.40,2,Weekday
+2026-10-05,BANANA-001,Bananas,Produce,Main Store,2,kg,18,Green Valley Produce,0.85,2,Weekday
+2026-10-05,MILK-001,Whole Milk 1L,Dairy,Main Store,2,each,20,Coastal Dairy,1.10,1,Steady
+2026-10-05,YOGURT-001,Greek Yogurt 170g,Dairy,Main Store,2,each,6,Coastal Dairy,1.75,1,Recent only
+2026-10-05,WATER-024,Spring Water 24pk,Beverages,Main Store,2,case,4,Summit Beverage Co.,4.25,3,Last case
+2026-10-05,PASTA-500,Spaghetti 500g,Grocery,Main Store,1,each,12,Metro Grocery Wholesale,1.20,5,Steady
+2026-10-05,BREAD-001,Sourdough Loaf,Bakery,Main Store,1,each,10,Harbor Household Supply,2.50,7,Weekday
+2026-10-05,PUMP-001,Seasonal Pumpkin,Produce,Main Store,2,each,10,Green Valley Produce,3.00,2,New item
+2026-10-06,APPLE-001,Honeycrisp Apples,Produce,Main Store,3,kg,20,Green Valley Produce,2.40,2,Weekday
+2026-10-06,BANANA-001,Bananas,Produce,Main Store,2,kg,18,Green Valley Produce,0.85,2,Weekday
+2026-10-06,MILK-001,Whole Milk 1L,Dairy,Main Store,2,each,20,Coastal Dairy,1.10,1,Steady
+2026-10-06,YOGURT-001,Greek Yogurt 170g,Dairy,Main Store,2,each,6,Coastal Dairy,1.75,1,Recent only
+2026-10-06,PASTA-500,Spaghetti 500g,Grocery,Main Store,1,each,12,Metro Grocery Wholesale,1.20,5,Steady
+2026-10-06,BREAD-001,Sourdough Loaf,Bakery,Main Store,1,each,10,Harbor Household Supply,2.50,7,Weekday
+2026-10-06,OATS-001,Bulk Rolled Oats,Grocery,Main Store,1.25,kg,5.5,Metro Grocery Wholesale,1.25,5,Bulk
+2026-10-06,PUMP-001,Seasonal Pumpkin,Produce,Main Store,2,each,10,Green Valley Produce,3.00,2,New item

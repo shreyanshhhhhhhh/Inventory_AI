@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -337,6 +338,10 @@ class AutonomyRules(IdMixin, TimestampMixin, Base):
         nullable=False,
     )
     auto_approve_below_amount: Mapped[Decimal | None] = mapped_column(MONEY, nullable=True)
+    exception_scan_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    exception_scan_hour_utc: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
+    exception_scan_last_run_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    chase_followup_days: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
 
 
 class AuditLog(IdMixin, Base):
@@ -362,3 +367,277 @@ class AuditLog(IdMixin, Base):
     before_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     after_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class AgentRun(IdMixin, Base):
+    __tablename__ = "agent_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'awaiting_approval', 'completed', 'failed', 'cancelled')",
+            name="agent_run_status_known",
+        ),
+        Index("ix_agent_runs_business_id", "business_id"),
+        Index("ix_agent_runs_actor_status", "actor_user_id", "status"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    agent_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)
+    prompt_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    actor_user_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    started_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+    finished_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    input_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    plan_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    state_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    events_data: Mapped[list[object] | None] = mapped_column(JSON, nullable=True)
+    cancel_requested: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class AgentStep(IdMixin, Base):
+    __tablename__ = "agent_steps"
+    __table_args__ = (
+        CheckConstraint("step_kind IN ('llm', 'tool')", name="agent_step_kind_known"),
+        Index("ix_agent_steps_run_id", "run_id"),
+        Index("ix_agent_steps_business_id", "business_id"),
+    )
+
+    run_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    step_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    tool_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    prompt_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    input_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    output_data: Mapped[dict[str, object] | None] = mapped_column(JSON, nullable=True)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    tokens_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tokens_out: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class AgentSuggestion(IdMixin, Base):
+    __tablename__ = "agent_suggestions"
+    __table_args__ = (
+        CheckConstraint(
+            "suggestion_type IN ('generic', 'draft_po', 'draft_email')",
+            name="agent_suggestion_type_known",
+        ),
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'dismissed')",
+            name="agent_suggestion_status_known",
+        ),
+        Index("ix_agent_suggestions_business_id", "business_id"),
+        Index("ix_agent_suggestions_run_id", "run_id"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    run_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    suggestion_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
+    payload: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class InventoryException(IdMixin, TimestampMixin, Base):
+    __tablename__ = "exceptions"
+    __table_args__ = (
+        CheckConstraint(
+            "exception_type IN ('stockout_risk', 'overstock', 'demand_spike', "
+            "'demand_drop', 'supplier_delay', 'data_anomaly', 'chase_no_reply')",
+            name="exception_type_known",
+        ),
+        CheckConstraint(
+            "severity IN ('low', 'medium', 'high', 'critical')",
+            name="exception_severity_known",
+        ),
+        CheckConstraint(
+            "status IN ('open', 'resolved', 'ignored')",
+            name="exception_status_known",
+        ),
+        Index("ix_exceptions_business_id", "business_id"),
+        Index(
+            "uq_exceptions_open_dedupe",
+            "business_id",
+            "dedupe_key",
+            unique=True,
+            sqlite_where=text("status = 'open'"),
+            postgresql_where=text("status = 'open'"),
+        ),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    exception_type: Mapped[str] = mapped_column(String(40), nullable=False)
+    severity: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="open")
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    entity_id: Mapped[str] = mapped_column(CHAR(36), nullable=False)
+    dedupe_key: Mapped[str] = mapped_column(String(240), nullable=False)
+    title: Mapped[str] = mapped_column(String(240), nullable=False)
+    evidence: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    recommended_action: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    rationale: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suggestion_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_suggestions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    run_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
+
+class ConversationMessage(IdMixin, Base):
+    __tablename__ = "chat_messages"
+    __table_args__ = (
+        CheckConstraint("role IN ('user', 'assistant', 'system')", name="chat_message_role_known"),
+        Index("ix_chat_messages_user_created", "business_id", "user_id", "created_at"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    user_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    run_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_runs.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class SupplierMessage(IdMixin, TimestampMixin, Base):
+    __tablename__ = "supplier_messages"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('order', 'chase', 'expedite', 'delay-notice')",
+            name="supplier_message_kind_known",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'approved', 'sent', 'failed', 'rejected')",
+            name="supplier_message_status_known",
+        ),
+        Index("ix_supplier_messages_business_id", "business_id"),
+        Index("ix_supplier_messages_thread_id", "thread_id"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    supplier_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    po_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("purchase_orders.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    subject: Mapped[str] = mapped_column(String(240), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
+    created_by: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    approved_by: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    sent_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
+    thread_id: Mapped[str] = mapped_column(CHAR(36), nullable=False)
+    facts: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False, default=dict)
+    suggestion_id: Mapped[str | None] = mapped_column(
+        CHAR(36),
+        ForeignKey("agent_suggestions.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
+
+class SupplierReply(IdMixin, Base):
+    __tablename__ = "supplier_replies"
+    __table_args__ = (Index("ix_supplier_replies_message_id", "message_id"),)
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    message_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("supplier_messages.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    received_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed: Mapped[dict[str, object]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+
+
+class LlmUsageCounter(IdMixin, Base):
+    __tablename__ = "llm_usage_counters"
+    __table_args__ = (
+        UniqueConstraint("business_id", "usage_date", name="uq_llm_usage_business_id_usage_date"),
+    )
+
+    business_id: Mapped[str] = mapped_column(
+        CHAR(36),
+        ForeignKey("businesses.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    usage_date: Mapped[date] = mapped_column(Date, nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    token_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, nullable=False, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(
+        UtcDateTime,
+        nullable=False,
+        default=utcnow,
+        onupdate=utcnow,
+    )

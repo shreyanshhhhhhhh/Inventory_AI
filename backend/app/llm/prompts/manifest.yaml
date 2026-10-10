@@ -1,0 +1,46 @@
+prompts:
+  echo:
+    file: v1/echo.prompt.md
+    version: "1"
+  structured_retry:
+    file: v1/structured_retry.prompt.md
+    version: "1"
+  tool_router:
+    file: v1/tool_router.prompt.md
+    version: "1"
+  draft_po:
+    file: v1/draft_po.prompt.md
+    version: "1"
+  draft_email:
+    file: v1/draft_email.prompt.md
+    version: "1"
+  understand:
+    file: v1/understand.prompt.md
+    version: "1"
+  compound_plan:
+    file: v1/compound_plan.prompt.md
+    version: "1"
+  orchestrator_summary:
+    file: v1/orchestrator_summary.prompt.md
+    version: "1"
+  forecast_interpret:
+    file: v1/forecast_interpret.prompt.md
+    version: "1"
+  exception_rank:
+    file: v1/exception_rank.prompt.md
+    version: "1"
+  replenishment_decide:
+    file: v1/replenishment_decide.prompt.md
+    version: "1"
+  supplier_comm_wording:
+    file: v1/supplier_comm_wording.prompt.md
+    version: "1"
+  supplier_reply_extract:
+    file: v1/supplier_reply_extract.prompt.md
+    version: "1"
+  explainer_explain:
+    file: v1/explainer_explain.prompt.md
+    version: "1"
+  explainer_whatif:
+    file: v1/explainer_whatif.prompt.md
+    version: "1"

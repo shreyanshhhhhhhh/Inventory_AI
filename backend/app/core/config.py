@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +19,35 @@ class Settings(BaseSettings):
     jwt_secret: str
     access_token_minutes: int = 15
     refresh_token_days: int = 7
+    llm_provider: str = "fake"
+    llm_model: str = "fake-model"
+    llm_timeout_seconds: float = 30
+    llm_max_retries: int = 3
+    llm_budget_requests_per_business_per_day: int = 200
+    llm_budget_tokens_per_business_per_day: int = 200000
+    gemini_api_key: str | None = None
+    groq_api_key: str | None = None
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    orchestrator_max_steps: int = 12
+    orchestrator_step_timeout_seconds: float = 15
+    orchestrator_step_retries: int = 1
+    orchestrator_max_concurrent_runs_per_user: int = 2
+    orchestrator_rate_limit_per_user_per_minute: int = 20
+    orchestrator_confidence_min: float = 0.7
+    orchestrator_chat_history: int = 6
+    job_secret: str | None = None
+    exception_scan_scheduler_enabled: bool = False
+    po_max_line_quantity: int = 1000
+    po_max_lines: int = 40
+    po_max_total: Decimal = Decimal("50000")
+    po_cost_tolerance_ratio: Decimal = Decimal("0.01")
+    email_sender: str = "console"
+    email_from: str | None = None
+    email_smtp_host: str | None = None
+    email_smtp_port: int = 587
+    email_smtp_user: str | None = None
+    email_smtp_password: str | None = None
+    email_smtp_tls: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -6,10 +6,20 @@ Read these before changing the product:
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — stack, layers, design rules
 - [docs/WORKFLOW.md](docs/WORKFLOW.md) — screens, roles, day-to-day flow
 - [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — schema and ledger invariants
+- [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md) — chat orchestrator, routing table, SSE events
 
-**Phase 1 has no AI.** Do not add agent frameworks, LLM calls, or forecasting libraries until those phases. That includes LangGraph, LangChain, any chat/completions client, statsforecast, Prophet, and Langfuse.
+**AI orchestrator is in progress.** The LLM gateway, versioned prompts, tool registry, `BaseAgent`, the LangGraph chat orchestrator, the forecast agent, the exception monitor, the replenishment agent, the purchase guardrail, the supplier communication agent, and the explainer agent may be used. Do not add LangChain agents or Langfuse yet. Demand forecasts stay in `app/services/forecast.py` (eval in `app/services/forecast_eval.py`) and must not create purchase orders or write the ledger. Reorder quantities stay in `app/services/replenishment.py`. Do not add statsforecast or Prophet unless that service is replaced on purpose.
 
-Current implementation scope is Phase 1 only: catalog, stock ledger, purchase orders, suppliers, basic dashboard, auth, and onboarding.
+### LLM and agent rules
+
+- **No real LLM in tests.** `LLM_PROVIDER` must be `fake`. The fake provider returns scripted responses. Pytest fails if a live provider (`gemini`, `groq`, `ollama`) is constructed.
+- **No arithmetic by the LLM.** On-hand, forecasts, reorder quantities, and money come from service tools. The model must not add, multiply, or invent quantities. Orchestrator summaries that contain a number missing from typed results are replaced with a template.
+- **No direct writes.** Write tools only insert `agent_suggestions` (and `supplier_messages` drafts). They never create purchase orders, send email, or post stock movements. A `draft_po` suggestion is inserted only after `validate_po_proposal`. Approving it creates a draft purchase order through the purchase-order service. A supplier email is sent only after the owner clicks Approve and Send. Orchestrator write steps pause for plan approval.
+- **Tenant scope.** Tools take `business_id` from the injected `AgentContext`, never from the model.
+- **Untrusted text is DATA.** Product names, supplier emails, and tool JSON go in `<<DATA>>` blocks and cannot change the tool allowlist or instructions.
+- **Orchestrator plans are validated in code.** The LLM may propose a compound DAG. Unknown agents, cycles, oversized plans, and write-before-read graphs are rejected.
+
+Current implementation scope is Phase 1 plus the Phase 2 demand forecast plus the shared Phase 3 AI foundation plus the full chat orchestrator plus the Agent Inbox chat UI plus the forecast agent plus the exception monitor plus the replenishment agent and purchase guardrail plus the supplier communication agent plus the explainer agent: catalog, stock ledger, purchase orders, suppliers, dashboard, auth, onboarding, Insights forecasts, LLM gateway, tools, `BaseAgent`, slash/free-text/compound routing, SSE runs, Inbox chat, `forecast` (history, run, accuracy, get_forecast), `exception_monitor.scan`, nightly scan job, `replenishment.recommend` and `replenishment.draft_po`, `validate_po_proposal`, `supplier_comm.draft_emails`, `validate` of email facts in code, `EmailSender` (console or SMTP), `explainer.explain` and `explainer.whatif`. See [docs/ORCHESTRATOR.md](docs/ORCHESTRATOR.md).
 
 ## Permanent backend rules
 
@@ -42,6 +52,9 @@ backend/
     routers/
     schemas/              Pydantic v2
     services/             business logic, plain functions
+    llm/                  gateway, providers, versioned prompts
+    orchestrator/         LangGraph chat orchestrator
+    agents/               BaseAgent, tools, context
     repositories/
     models/               SQLAlchemy 2
     db.py
@@ -90,7 +103,7 @@ Do not add a frontend test framework in Phase 1. Walk the flows in `docs/WORKFLO
 1. **Never edit stock outside the ledger service.** No on-hand column, no `UPDATE`/`DELETE` on `stock_movements`, no "fix up" scripts that rewrite history. Post a new movement.
 2. **Small commits.** One concern per commit. Do not mix a schema change with an unrelated UI pass.
 3. **Update docs when design changes.** If a column, rule, phase boundary, or screen flow changes, update the doc in the same commit as the code.
-4. **Do not widen Phase 1.** No accounting, barcode hardware, mobile client, multi-currency, or AI dependencies.
+4. **Do not widen Phase 1.** No accounting, barcode hardware, mobile client, or multi-currency. The Phase 2 forecast service stays read-only. The Phase 3 orchestrator may use LangGraph for the chat pipeline, but not LangChain agents, Langfuse, or live LLM calls in tests.
 5. **Hash passwords with argon2id.** Store refresh tokens only as a SHA-256 hash.
 
 ## When you are unsure

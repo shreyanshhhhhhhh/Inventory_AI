@@ -252,6 +252,9 @@ def update_autonomy_rules_route(
             business_id=business_id,
             actor_user_id=user.id,
             auto_approve_below_amount=body.auto_approve_below_amount,
+            exception_scan_enabled=body.exception_scan_enabled,
+            exception_scan_hour_utc=body.exception_scan_hour_utc,
+            chase_followup_days=body.chase_followup_days,
         )
     except SettingsError as exc:
         raise _handle_settings_error(exc) from exc

@@ -1,10 +1,13 @@
 import { PageContainer } from "@/components/common/page-container";
 import { InboxPageContent } from "@/components/inbox/inbox-page-content";
+import { Suspense } from "react";
 
 export default function InboxPage() {
   return (
     <PageContainer>
-      <InboxPageContent />
+      <Suspense>
+        <InboxPageContent />
+      </Suspense>
     </PageContainer>
   );
 }

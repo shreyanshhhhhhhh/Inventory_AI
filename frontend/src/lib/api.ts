@@ -24,6 +24,8 @@ import type {
   ApiTeamUser,
   ApiDemoSeedResult,
   ApiMovementsOverTime,
+  ApiForecastDetail,
+  ApiForecastList,
   ApiTopSellers,
   ApiNeedsAttentionItem,
   ApiImportResult,
@@ -600,6 +602,20 @@ export const api = {
         `${API_V1}/insights/top-sellers?days=${days}&limit=${limit}`,
       );
     },
+    forecasts(historyDays = 56, horizonDays = 14): Promise<ApiForecastList> {
+      return request<ApiForecastList>(
+        `${API_V1}/insights/forecasts?history_days=${historyDays}&horizon_days=${horizonDays}`,
+      );
+    },
+    forecast(
+      productId: string,
+      historyDays = 56,
+      horizonDays = 14,
+    ): Promise<ApiForecastDetail> {
+      return request<ApiForecastDetail>(
+        `${API_V1}/insights/forecasts/${productId}?history_days=${historyDays}&horizon_days=${horizonDays}`,
+      );
+    },
   },
 
   accounts: {
@@ -697,6 +713,9 @@ export const api = {
       },
       update(body: {
         auto_approve_below_amount: string | null;
+        exception_scan_enabled?: boolean;
+        exception_scan_hour_utc?: number;
+        chase_followup_days?: number;
       }): Promise<ApiAutonomyRules> {
         return request<ApiAutonomyRules>(`${API_V1}/settings/autonomy-rules`, {
           method: "PATCH",

@@ -2,7 +2,7 @@
 
 A small-shop inventory app: catalog, stock ledger, suppliers, purchase orders, dashboard, and team settings. The browser is a Next.js app. It talks only to a FastAPI API. Local development uses SQLite; deploy uses PostgreSQL through the same models.
 
-**Phase 1 has no AI.** Agent Inbox is a placeholder. Insights shows charts from real movement and sales data (no forecasting yet).
+**Orchestrator plumbing is in.** Chat runs live at `/api/v1/chat`. Agent Inbox streams those events in a chat UI. Insights shows a 14-day demand forecast per SKU from real sales, plus movement and top-seller charts. Forecasts do not create purchase orders.
 
 ## Ports
 
@@ -73,10 +73,13 @@ Open http://127.0.0.1:43123, sign up at `/signup`, then use the app. Owners can 
 - **Inventory** — append-only stock ledger, stock levels, movement history, sales CSV import
 - **Orders** — purchase order lifecycle (draft → approved → sent → received), receive via ledger
 - **Home** — dashboard summary, needs attention, recent activity
-- **Insights** — movements-over-time and top-sellers charts (read-only)
+- **Insights** — 14-day demand forecast per SKU, plus movements-over-time and top-sellers charts (read-only). Ask why opens Inbox.
 - **Accounts** — stock value, open PO value, payables, supplier totals (read-only)
-- **Settings** — business profile, locations, team (owner-only), autonomy rules (stored only)
+- **Settings** — business profile, locations, team (owner-only), autonomy rules including nightly exception scan
 - **Onboarding** — demo seed API and `scripts/seed_demo.py`
+- **Agent Inbox** — SSE chat, plan checklist, suggestion cards, Approvals tab. `/stock` and `/forecast` use the forecast agent. `/scan` runs the exception monitor. `/reorder` and `/draft-po` use the replenishment agent. Approving a purchase suggestion creates a draft purchase order. `/email <supplier> <kind>` drafts a supplier email; Approve and Send is owner-only. `/why` and `/whatif` explain stored decisions from evidence. See `docs/ORCHESTRATOR.md`.
+- **Chat orchestrator** — `POST /api/v1/chat/runs`, `GET /api/v1/chat/runs/{id}`, SSE events, cancel/resume.
+- **Jobs** — `POST /api/v1/jobs/exception-scan` (owner JWT or `X-Job-Secret`)
 
 Staff users can manage day-to-day stock and orders. Only **owners** can approve purchase orders, change settings, and manage team members.
 
@@ -123,7 +126,7 @@ All application routes are under `/api/v1` except `/health`.
 | Inventory | `GET /inventory/stock`, `POST /inventory/movements`, `POST /inventory/sales` |
 | Orders | `GET/POST /purchase-orders`, `POST .../transition` |
 | Dashboard | `GET /dashboard/summary`, `/needs-attention`, `/activity` |
-| Insights | `GET /insights/movements-over-time`, `/top-sellers` |
+| Insights | `GET /insights/forecasts`, `/insights/forecasts/{product_id}`, `/movements-over-time`, `/top-sellers` |
 | Accounts | `GET /accounts/summary`, `/by-supplier` |
 | Settings | `PATCH /settings/business`, `/locations` (+ `/{id}/restore`), `/users` (+ `/{id}/role`, `/{id}/active`), `/autonomy-rules` |
 | Audit | `GET /audit-log` (owner) |

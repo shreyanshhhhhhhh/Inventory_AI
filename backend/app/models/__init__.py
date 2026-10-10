@@ -1,10 +1,16 @@
 """SQLAlchemy models shared by SQLite and PostgreSQL."""
 
 from app.models.entities import (
+    AgentRun,
+    AgentStep,
+    AgentSuggestion,
     AuditLog,
     AutonomyRules,
     Business,
     Category,
+    ConversationMessage,
+    InventoryException,
+    LlmUsageCounter,
     Location,
     Product,
     ProductSupplier,
@@ -13,16 +19,24 @@ from app.models.entities import (
     RefreshToken,
     StockMovement,
     Supplier,
+    SupplierMessage,
+    SupplierReply,
     User,
 )
 from app.db import Base
 
 __all__ = [
+    "AgentRun",
+    "AgentStep",
+    "AgentSuggestion",
     "AuditLog",
     "AutonomyRules",
     "Base",
     "Business",
     "Category",
+    "ConversationMessage",
+    "InventoryException",
+    "LlmUsageCounter",
     "Location",
     "Product",
     "ProductSupplier",
@@ -31,5 +45,7 @@ __all__ = [
     "RefreshToken",
     "StockMovement",
     "Supplier",
+    "SupplierMessage",
+    "SupplierReply",
     "User",
 ]
