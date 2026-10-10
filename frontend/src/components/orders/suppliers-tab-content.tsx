@@ -7,10 +7,13 @@ import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/common/data-table";
 import { EmptyState } from "@/components/common/empty-state";
 import { FormDialog } from "@/components/common/form-dialog";
+import { LoadErrorState } from "@/components/inventory/load-error-state";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { showApiErrorToast } from "@/lib/api";
 import { useSuppliers } from "@/lib/catalog-hooks";
 import type { Supplier } from "@/types";
 
@@ -22,15 +25,46 @@ const emptySupplierForm = {
 };
 
 export function SuppliersTabContent() {
-  const { suppliers, isLoading, error, addSupplier, updateSupplier } =
-    useSuppliers();
+  const {
+    suppliers,
+    isLoading,
+    error,
+    refresh,
+    addSupplier,
+    updateSupplier,
+    restoreSupplier,
+    includeArchived,
+    setIncludeArchived,
+  } = useSuppliers();
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [supplierForm, setSupplierForm] = useState(emptySupplierForm);
   const [submitting, setSubmitting] = useState(false);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
+
+  const handleRestore = async (supplier: Supplier) => {
+    setRestoringId(supplier.id);
+    try {
+      await restoreSupplier(supplier.id);
+      toast.success(`${supplier.name} restored`);
+    } catch (err) {
+      showApiErrorToast(err);
+    } finally {
+      setRestoringId(null);
+    }
+  };
 
   const supplierColumns: DataTableColumn<Supplier>[] = [
-    { id: "name", header: "Name", cell: (row) => row.name },
+    {
+      id: "name",
+      header: "Name",
+      cell: (row) => (
+        <span className="flex items-center gap-2">
+          {row.name}
+          {!row.isActive ? <Badge variant="secondary">Archived</Badge> : null}
+        </span>
+      ),
+    },
     { id: "email", header: "Email", cell: (row) => row.email || "—" },
     { id: "phone", header: "Phone", cell: (row) => row.phone || "—" },
     {
@@ -41,24 +75,35 @@ export function SuppliersTabContent() {
     {
       id: "actions",
       header: "",
-      cell: (row) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            setEditingSupplier(row);
-            setSupplierForm({
-              name: row.name,
-              email: row.email,
-              phone: row.phone,
-              leadTimeDays: String(row.leadTimeDays),
-            });
-            setSupplierDialogOpen(true);
-          }}
-        >
-          Edit
-        </Button>
-      ),
+      className: "text-right",
+      cell: (row) =>
+        row.isActive ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              setEditingSupplier(row);
+              setSupplierForm({
+                name: row.name,
+                email: row.email,
+                phone: row.phone,
+                leadTimeDays: String(row.leadTimeDays),
+              });
+              setSupplierDialogOpen(true);
+            }}
+          >
+            Edit
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={restoringId === row.id}
+            onClick={() => void handleRestore(row)}
+          >
+            {restoringId === row.id ? "Restoring…" : "Restore"}
+          </Button>
+        ),
     },
   ];
 
@@ -86,9 +131,7 @@ export function SuppliersTabContent() {
       setEditingSupplier(null);
       setSupplierForm(emptySupplierForm);
     } catch (err) {
-      toast.error(
-        err instanceof Error ? err.message : "Could not save supplier.",
-      );
+      showApiErrorToast(err);
     } finally {
       setSubmitting(false);
     }
@@ -106,10 +149,13 @@ export function SuppliersTabContent() {
   return (
     <>
       <div className="space-y-4">
-        {error ? (
-          <p className="text-sm text-destructive">{error}</p>
-        ) : null}
-        <div className="flex justify-end">
+        <div className="flex justify-end gap-2">
+          <Button
+            variant={includeArchived ? "default" : "outline"}
+            onClick={() => setIncludeArchived(!includeArchived)}
+          >
+            Show archived
+          </Button>
           <Button
             onClick={() => {
               setEditingSupplier(null);
@@ -121,18 +167,26 @@ export function SuppliersTabContent() {
             Add supplier
           </Button>
         </div>
-        <DataTable
-          data={suppliers}
-          columns={supplierColumns}
-          getRowId={(row) => row.id}
-          emptyState={
-            <EmptyState
-              icon={Truck}
-              title="No suppliers"
-              message="Add suppliers to link products and purchase orders."
-            />
-          }
-        />
+        {error ? (
+          <LoadErrorState
+            title="Could not load suppliers"
+            message={error}
+            onRetry={refresh}
+          />
+        ) : (
+          <DataTable
+            data={suppliers}
+            columns={supplierColumns}
+            getRowId={(row) => row.id}
+            emptyState={
+              <EmptyState
+                icon={Truck}
+                title="No suppliers"
+                message="Add suppliers to link products and purchase orders."
+              />
+            }
+          />
+        )}
       </div>
 
       <FormDialog

@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/common/empty-state";
 import { FormDialog } from "@/components/common/form-dialog";
 import { PageHeader } from "@/components/common/page-header";
 import { StatusBadge } from "@/components/common/status-badge";
+import { LoadErrorState } from "@/components/inventory/load-error-state";
 import { PoDetailSheet } from "@/components/orders/po-detail-sheet";
 import { SuppliersTabContent } from "@/components/orders/suppliers-tab-content";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { showApiErrorToast } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
 import { useProducts, useSuppliers } from "@/lib/catalog-hooks";
 import { useInventory } from "@/lib/inventory-hooks";
 import { formatCurrency, formatDate } from "@/lib/format";
@@ -43,6 +45,8 @@ export function OrdersPageContent() {
   const {
     purchaseOrders,
     isLoading,
+    error,
+    refreshPurchaseOrders,
     statusFilter,
     supplierFilter,
     setStatusFilter,
@@ -52,7 +56,9 @@ export function OrdersPageContent() {
     getPurchaseOrderTotal,
     getProductById,
   } = usePurchaseOrders();
+  const { isOwner } = useAuth();
   const { suppliers } = useSuppliers();
+  const activeSuppliers = suppliers.filter((supplier) => supplier.isActive);
   const { products } = useProducts();
   const { refreshStock, refreshMovements } = useInventory();
 
@@ -140,6 +146,10 @@ export function OrdersPageContent() {
 
   const handleTransition = async (action: TransitionAction) => {
     if (!selectedPo) return;
+    if (action === "approve" && !isOwner) {
+      toast.error("Only an owner can approve purchase orders.");
+      return;
+    }
     setTransitioning(true);
     try {
       const updated = await transitionPurchaseOrder(selectedPo.id, action);
@@ -183,6 +193,12 @@ export function OrdersPageContent() {
           </div>
           {isLoading ? (
             <Skeleton className="h-64 w-full" />
+          ) : error ? (
+            <LoadErrorState
+              title="Could not load purchase orders"
+              message={error}
+              onRetry={refreshPurchaseOrders}
+            />
           ) : (
             <DataTable
               data={purchaseOrders}
@@ -262,6 +278,7 @@ export function OrdersPageContent() {
         total={selectedPo ? getPurchaseOrderTotal(selectedPo) : 0}
         onTransition={(action) => void handleTransition(action)}
         isSubmitting={transitioning}
+        canApprove={isOwner}
       />
 
       <FormDialog
@@ -283,7 +300,7 @@ export function OrdersPageContent() {
                 <SelectValue placeholder="Select supplier" />
               </SelectTrigger>
               <SelectContent>
-                {suppliers.map((supplier) => (
+                {activeSuppliers.map((supplier) => (
                   <SelectItem key={supplier.id} value={supplier.id}>
                     {supplier.name}
                   </SelectItem>

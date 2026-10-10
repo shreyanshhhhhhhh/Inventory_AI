@@ -27,6 +27,8 @@ import { DataTable, type DataTableColumn } from "@/components/common/data-table"
 import { EmptyState } from "@/components/common/empty-state";
 import { FormDialog } from "@/components/common/form-dialog";
 import { PageHeader } from "@/components/common/page-header";
+import { LoadErrorState } from "@/components/inventory/load-error-state";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -78,6 +80,9 @@ export function CatalogPageContent() {
     addProduct,
     updateProduct,
     deleteProduct,
+    restoreProduct,
+    showArchived,
+    setShowArchived,
   } = useProducts();
   const { categories, isLoading: categoriesLoading, addCategory } =
     useCategories();
@@ -99,7 +104,9 @@ export function CatalogPageContent() {
   const [submitting, setSubmitting] = useState(false);
   const [loadingDemo, setLoadingDemo] = useState(false);
   const [searchInput, setSearchInput] = useState(search);
+  const [restoringId, setRestoringId] = useState<string | null>(null);
   const isOwner = user?.role === "owner";
+  const activeSuppliers = suppliers.filter((supplier) => supplier.isActive);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -156,11 +163,28 @@ export function CatalogPageContent() {
     if (!deleteTarget) return;
     try {
       await deleteProduct(deleteTarget.id);
-      toast.success("Product deleted");
+      toast.success("Product archived");
       setDeleteTarget(null);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not delete product.");
+      showApiErrorToast(err);
     }
+  };
+
+  const handleRestore = async (product: Product) => {
+    setRestoringId(product.id);
+    try {
+      await restoreProduct(product.id);
+      toast.success(`${product.name} restored`);
+    } catch (err) {
+      showApiErrorToast(err);
+    } finally {
+      setRestoringId(null);
+    }
+  };
+
+  const toggleArchived = () => {
+    setShowArchived(!showArchived);
+    setPage(1);
   };
 
   const refreshAfterImport = async () => {
@@ -212,7 +236,16 @@ export function CatalogPageContent() {
 
   const columns: DataTableColumn<Product>[] = [
     { id: "sku", header: "SKU", cell: (row) => row.sku },
-    { id: "name", header: "Name", cell: (row) => row.name },
+    {
+      id: "name",
+      header: "Name",
+      cell: (row) => (
+        <span className="flex items-center gap-2">
+          {row.name}
+          {!row.isActive ? <Badge variant="secondary">Archived</Badge> : null}
+        </span>
+      ),
+    },
     {
       id: "category",
       header: "Category",
@@ -243,7 +276,17 @@ export function CatalogPageContent() {
       id: "actions",
       header: "",
       className: "w-12 text-right",
-      cell: (row) => (
+      cell: (row) =>
+        !row.isActive ? (
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={restoringId === row.id}
+            onClick={() => void handleRestore(row)}
+          >
+            {restoringId === row.id ? "Restoring…" : "Restore"}
+          </Button>
+        ) : (
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -257,11 +300,11 @@ export function CatalogPageContent() {
               Edit
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => setDeleteTarget(row)}>
-              Delete
+              Archive
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-      ),
+        ),
     },
   ];
 
@@ -287,13 +330,17 @@ export function CatalogPageContent() {
         }
       />
 
-      {error ? <p className="text-sm text-destructive">{error}</p> : null}
-
       {isLoading ? (
         <div className="space-y-4">
           <Skeleton className="h-8 w-full max-w-sm" />
           <Skeleton className="h-64 w-full" />
         </div>
+      ) : error ? (
+        <LoadErrorState
+          title="Could not load products"
+          message={error}
+          onRetry={refresh}
+        />
       ) : (
         <>
           <div className="relative w-full max-w-sm">
@@ -332,9 +379,22 @@ export function CatalogPageContent() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Button
+                  variant={showArchived ? "default" : "outline"}
+                  onClick={toggleArchived}
+                >
+                  Show archived
+                </Button>
               </>
             }
             emptyState={
+              showArchived ? (
+                <EmptyState
+                  icon={Package}
+                  title="No archived products"
+                  message="Archived products appear here and can be restored."
+                />
+              ) : (
               <EmptyState
                 icon={Package}
                 title="No products yet"
@@ -362,6 +422,7 @@ export function CatalogPageContent() {
                   </div>
                 }
               />
+              )
             }
           />
 
@@ -414,7 +475,7 @@ export function CatalogPageContent() {
           <ProductFormFields
             values={formValues}
             categories={categories}
-            suppliers={suppliers}
+            suppliers={activeSuppliers}
             onChange={setFormValues}
             errors={formErrors}
           />
@@ -463,10 +524,10 @@ export function CatalogPageContent() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete product?</DialogTitle>
+            <DialogTitle>Archive product?</DialogTitle>
             <DialogDescription>
               {deleteTarget
-                ? `Archive ${deleteTarget.name} (${deleteTarget.sku})? It will be hidden from the catalog.`
+                ? `Archive ${deleteTarget.name} (${deleteTarget.sku})? It will be hidden from the catalog until restored.`
                 : null}
             </DialogDescription>
           </DialogHeader>
@@ -475,7 +536,7 @@ export function CatalogPageContent() {
               Cancel
             </Button>
             <Button variant="destructive" onClick={() => void handleDelete()}>
-              Delete
+              Archive
             </Button>
           </DialogFooter>
         </DialogContent>

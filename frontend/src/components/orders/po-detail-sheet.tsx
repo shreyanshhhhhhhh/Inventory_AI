@@ -32,6 +32,8 @@ interface PoDetailSheetProps {
   total: number;
   onTransition: (action: TransitionAction) => void;
   isSubmitting?: boolean;
+  /** Only owners may approve; staff see a waiting note on drafts. */
+  canApprove: boolean;
 }
 
 export function PoDetailSheet({
@@ -43,6 +45,7 @@ export function PoDetailSheet({
   total,
   onTransition,
   isSubmitting = false,
+  canApprove,
 }: PoDetailSheetProps) {
   if (!order) return null;
 
@@ -54,7 +57,9 @@ export function PoDetailSheet({
     sent: { label: "Receive", action: "receive" },
   };
 
-  const action = nextActions[order.status];
+  const candidate = nextActions[order.status];
+  const awaitingOwnerApproval = candidate?.action === "approve" && !canApprove;
+  const action = awaitingOwnerApproval ? undefined : candidate;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -105,6 +110,12 @@ export function PoDetailSheet({
             <span className="text-muted-foreground">Order total</span>
             <span className="text-lg font-semibold">{formatCurrency(total)}</span>
           </div>
+
+          {awaitingOwnerApproval ? (
+            <p className="text-sm text-muted-foreground">
+              Waiting for an owner to approve this purchase order.
+            </p>
+          ) : null}
 
           <div className="flex flex-wrap gap-2">
             {action ? (
